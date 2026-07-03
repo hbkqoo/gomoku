@@ -1,0 +1,178 @@
+/* 引擎單元測試：node tests/engine.test.js */
+const E = require('../engine.js');
+
+let passed = 0, failed = 0;
+function assert(cond, name) {
+  if (cond) { passed++; console.log('  PASS  ' + name); }
+  else { failed++; console.error('  FAIL  ' + name); }
+}
+
+// 依序落子的工具：moves 為 [x, y] 陣列，黑白交替
+function play(moves) {
+  const g = E.createGame();
+  for (const [x, y] of moves) E.place(g, x, y);
+  return g;
+}
+
+/* ---- 基本規則 ---- */
+
+console.log('基本規則');
+{
+  const g = E.createGame();
+  assert(g.current === E.BLACK, '黑棋先行');
+  assert(E.place(g, 7, 7) === true, '合法落子成功');
+  assert(E.place(g, 7, 7) === false, '不可落在已有棋子上');
+  assert(g.current === E.WHITE, '落子後換手');
+}
+{
+  // 黑棋橫向連五
+  const g = play([[3, 7], [3, 8], [4, 7], [4, 8], [5, 7], [5, 8], [6, 7], [6, 8], [7, 7]]);
+  assert(g.winner === E.BLACK, '橫向連五判黑勝');
+  assert(g.winLine && g.winLine.length >= 5, '回報勝利連線');
+  assert(E.place(g, 0, 0) === false, '勝負已定不可再落子');
+}
+{
+  // 直向連五
+  const g = play([[7, 3], [8, 3], [7, 4], [8, 4], [7, 5], [8, 5], [7, 6], [8, 6], [7, 7]]);
+  assert(g.winner === E.BLACK, '直向連五判勝');
+}
+{
+  // 斜向連五
+  const g = play([[3, 3], [0, 1], [4, 4], [0, 2], [5, 5], [0, 3], [6, 6], [0, 4], [7, 7]]);
+  assert(g.winner === E.BLACK, '斜向連五判勝');
+}
+
+/* ---- 悔棋 ---- */
+
+console.log('悔棋');
+{
+  const g = play([[7, 7], [8, 8]]);
+  assert(E.undo(g) === true, '悔棋成功');
+  assert(g.board[8][8] === E.EMPTY, '棋子已移除');
+  assert(g.current === E.WHITE, '輪到被悔的一方');
+  E.undo(g);
+  assert(E.undo(g) === false, '空盤不可再悔');
+}
+{
+  // 勝局悔棋可復活
+  const g = play([[3, 7], [3, 8], [4, 7], [4, 8], [5, 7], [5, 8], [6, 7], [6, 8], [7, 7]]);
+  E.undo(g);
+  assert(g.winner === 0 && g.winLine === null, '悔掉致勝手後勝負重置');
+}
+
+/* ---- AI：一步決勝負 ---- */
+
+console.log('AI 一步決勝負');
+{
+  // 黑有活四 (3..6, 7)，輪到黑：AI 應直接連五
+  const g = play([[3, 7], [3, 0], [4, 7], [4, 0], [5, 7], [5, 0], [6, 7], [6, 0]]);
+  const mv = E.aiMove(g);
+  const wins = (mv.x === 2 && mv.y === 7) || (mv.x === 7 && mv.y === 7);
+  assert(wins, 'AI 有連五就直取（下在 ' + mv.x + ',' + mv.y + '）');
+}
+{
+  // 白有沖四 (3..6, 7)、(2,7) 已被黑堵住，輪到黑：AI 必須擋 (7,7)
+  // 黑的填子放四角，避免自己湊出連線
+  const g = play([[2, 7], [3, 7], [14, 0], [4, 7], [0, 14], [5, 7], [14, 14], [6, 7]]);
+  const mv = E.aiMove(g);
+  assert(mv.x === 7 && mv.y === 7, 'AI 擋住對方的沖四（下在 ' + mv.x + ',' + mv.y + '）');
+}
+{
+  // 白有活三 (4..6, 7)，輪到黑：AI 應在 3,7 或 7,7 攔截
+  const g = play([[0, 0], [4, 7], [0, 1], [5, 7], [0, 2], [6, 7]]);
+  const mv = E.aiMove(g);
+  const blocks = (mv.y === 7 && (mv.x === 3 || mv.x === 7));
+  assert(blocks, 'AI 攔截對方活三（下在 ' + mv.x + ',' + mv.y + '）');
+}
+
+/* ---- AI：多步搜尋（比單手啟發式強的證據） ---- */
+
+console.log('AI 多步搜尋');
+{
+  // 黑已有活三 (4..6, 7) 與活二 (5, 5..6)，深度搜尋應能找到製造雙威脅或直接進攻的路線；
+  // 至少：AI（黑）此時不應下出與局面無關的棋
+  const g = play([[4, 7], [0, 0], [5, 7], [0, 1], [6, 7], [0, 2]]);
+  const mv = E.aiMove(g);
+  const extendsThree = mv.y === 7 && (mv.x === 3 || mv.x === 7);
+  assert(extendsThree, 'AI 把活三延伸成四逼對手（下在 ' + mv.x + ',' + mv.y + '）');
+}
+{
+  // 深度 vs 淺層對弈 30 局太久，改驗證：搜尋版能看穿「假防守」。
+  // 局面：白下一手可形成活四的雙威脅點存在時，深度搜尋應提前處理。
+  // 白有兩條活二交叉（(8,4)-(8,5) 與 (6,6)-(7,6)），交叉延伸點威脅大；
+  // 這裡只驗證搜尋版與淺層版在同一局面都能給出合法著手且不報錯。
+  const g = play([[7, 7], [8, 4], [7, 8], [8, 5], [3, 3], [6, 6], [3, 4], [7, 6]]);
+  const deep = E.aiMove(g);
+  const shallow = E.aiMove(g, { depth: 0 });
+  assert(deep && g.board[deep.y][deep.x] === E.EMPTY, '搜尋版回傳合法空點');
+  assert(shallow && g.board[shallow.y][shallow.x] === E.EMPTY, '淺層版回傳合法空點');
+  // 候選點合約：著手必須在既有棋子的 2 格範圍內（不會下到荒郊野外）
+  let near = false;
+  for (const m of g.moves) {
+    if (Math.abs(m.x - deep.x) <= 2 && Math.abs(m.y - deep.y) <= 2) { near = true; break; }
+  }
+  assert(near, 'AI 著手貼近戰場（' + deep.x + ',' + deep.y + '）');
+}
+{
+  // 空盤第一手：下天元
+  const g = E.createGame();
+  const mv = E.aiMove(g);
+  assert(mv.x === 7 && mv.y === 7, '空盤 AI 下天元');
+}
+
+/* ---- AI：速度 ---- */
+
+console.log('AI 速度');
+{
+  // 模擬中盤（12 子）局面：刻意不含任何四連威脅，確保走到完整深度搜尋
+  const g = play([
+    [7, 7], [8, 8], [7, 8], [8, 7], [6, 6], [9, 9],
+    [5, 8], [9, 6], [6, 9], [10, 7], [4, 7], [6, 7],
+  ]);
+  let worst = 0;
+  for (let i = 0; i < 3; i++) {
+    const t0 = process.hrtime.bigint();
+    E.aiMove(g);
+    const ms = Number(process.hrtime.bigint() - t0) / 1e6;
+    if (ms > worst) worst = ms;
+  }
+  console.log('  （中盤單手最長 ' + worst.toFixed(0) + ' ms）');
+  assert(worst < 1500, 'AI 單手思考 < 1.5 秒');
+}
+
+/* ---- AI 對弈：搜尋版 vs 單手啟發式 ---- */
+
+console.log('AI 對弈驗證（搜尋版 vs 淺層隨機版，各執黑 3 局，seeded 可重現）');
+{
+  // seeded PRNG，測試結果可重現
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function duel(deepIsBlack, seed) {
+    const rng = mulberry32(seed);
+    const g = E.createGame();
+    let guard = 0;
+    while (!g.winner && guard++ < 225) {
+      const deepTurn = (g.current === E.BLACK) === deepIsBlack;
+      const mv = E.aiMove(g, deepTurn ? undefined : { depth: 0, jitter: 0.4, pool: 3, rng });
+      if (!mv) break;
+      E.place(g, mv.x, mv.y);
+    }
+    const deepColor = deepIsBlack ? E.BLACK : E.WHITE;
+    return g.winner === deepColor ? 1 : (g.winner === -1 ? 0.5 : 0);
+  }
+  let score = 0, games = 0;
+  for (let i = 0; i < 3; i++) { score += duel(true, 100 + i); games++; }
+  for (let i = 0; i < 3; i++) { score += duel(false, 200 + i); games++; }
+  console.log('  （搜尋版得分 ' + score + ' / ' + games + '）');
+  assert(score >= games * 0.7, '搜尋版明顯強於淺層版（得分率 >= 70%，和局算半分）');
+}
+
+console.log('');
+console.log('通過 ' + passed + '，失敗 ' + failed);
+process.exit(failed ? 1 : 0);

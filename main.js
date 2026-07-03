@@ -379,7 +379,9 @@
     if (mode !== 'auto' || auto.paused || auto.ended) return;
     if (game.winner) return autoResolve();
     const isBoss = game.current === BOSS;
-    const mv = E.aiMove(game, isBoss ? null : { jitter: 1, pool: 4 });
+    // 觀戰模式雙方都用單手啟發式（depth: 0）：保持原作的強弱平衡，
+    // 大哥太強的話對手永遠贏不了，時間倒轉與結局彩蛋就不會觸發
+    const mv = E.aiMove(game, isBoss ? { depth: 0 } : { jitter: 1, pool: 4 });
     if (mv) E.place(game, mv.x, mv.y);
     render();
     setStatus(turnText());
