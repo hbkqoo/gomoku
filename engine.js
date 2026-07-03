@@ -7,13 +7,15 @@
   const EMPTY = 0, BLACK = 1, WHITE = 2;
   const DIRS = [[1, 0], [0, 1], [1, 1], [1, -1]];
 
-  function createGame() {
+  // opts.renju: true 時啟用禁手規則（黑棋禁雙活三、雙四、長連）
+  function createGame(opts) {
     return {
       board: Array.from({ length: SIZE }, () => new Array(SIZE).fill(EMPTY)),
       current: BLACK,
       moves: [],
       winner: 0,
       winLine: null,
+      renju: !!(opts && opts.renju),
     };
   }
 
@@ -23,6 +25,7 @@
 
   function place(game, x, y) {
     if (game.winner || !inBoard(x, y) || game.board[y][x] !== EMPTY) return false;
+    if (game.renju && game.current === BLACK && forbiddenReason(game.board, x, y)) return false;
     game.board[y][x] = game.current;
     game.moves.push({ x, y, player: game.current });
     const line = findWinLine(game.board, x, y);
@@ -62,6 +65,92 @@
       if (cells.length >= 5) return cells;
     }
     return null;
+  }
+
+  /* ---- 禁手（Renju 簡化版）：黑棋禁雙活三、雙四、長連 ---- */
+
+  // 沿 (dx,dy) 方向、包含 (x,y) 的最大連續黑子串
+  function blackRun(board, x, y, dx, dy) {
+    const cells = [{ x, y }];
+    for (const s of [1, -1]) {
+      let nx = x + dx * s, ny = y + dy * s;
+      while (inBoard(nx, ny) && board[ny][nx] === BLACK) {
+        cells.push({ x: nx, y: ny });
+        nx += dx * s; ny += dy * s;
+      }
+    }
+    return cells;
+  }
+
+  // (x,y) 已放黑子的前提下，該方向是否存在「四」（再一手黑棋即成五；含跳四）
+  function dirHasFour(board, x, y, dx, dy) {
+    for (let o = -4; o <= 0; o++) {
+      let blacks = 0, empties = 0, covers = false, ok = true;
+      for (let i = 0; i < 5; i++) {
+        const cx = x + dx * (o + i), cy = y + dy * (o + i);
+        if (!inBoard(cx, cy)) { ok = false; break; }
+        if (cx === x && cy === y) covers = true;
+        const v = board[cy][cx];
+        if (v === BLACK) blacks++;
+        else if (v === EMPTY) empties++;
+        else { ok = false; break; }
+      }
+      if (ok && covers && blacks === 4 && empties === 1) return true;
+    }
+    return false;
+  }
+
+  // (x,y) 已放黑子的前提下，該方向是否存在「活三」（再一手黑棋可成兩端皆空的活四）
+  function dirHasLiveThree(board, x, y, dx, dy) {
+    for (let o = -4; o <= 4; o++) {
+      if (o === 0) continue;
+      const ex = x + dx * o, ey = y + dy * o;
+      if (!inBoard(ex, ey) || board[ey][ex] !== EMPTY) continue;
+      board[ey][ex] = BLACK;
+      let live = false;
+      const run = blackRun(board, ex, ey, dx, dy);
+      if (run.length === 4 && run.some((c) => c.x === x && c.y === y)) {
+        // 兩端外的格子須皆為空
+        let open = 0;
+        for (const s of [1, -1]) {
+          let nx = ex + dx * s, ny = ey + dy * s;
+          while (inBoard(nx, ny) && board[ny][nx] === BLACK) { nx += dx * s; ny += dy * s; }
+          if (inBoard(nx, ny) && board[ny][nx] === EMPTY) open++;
+        }
+        live = open === 2;
+      }
+      board[ey][ex] = EMPTY;
+      if (live) return true;
+    }
+    return false;
+  }
+
+  // 黑棋在 (x,y) 落子是否為禁手。回傳 null（合法）或原因字串（'長連'｜'雙四'｜'雙活三'）。
+  // 簡化：連五（恰好五）優先於禁手判定；活三不遞迴檢查成四點本身是否禁手。
+  function forbiddenReason(board, x, y) {
+    if (!inBoard(x, y) || board[y][x] !== EMPTY) return null;
+    board[y][x] = BLACK;
+    let five = false, over = false;
+    for (const [dx, dy] of DIRS) {
+      const n = blackRun(board, x, y, dx, dy).length;
+      if (n === 5) five = true;
+      else if (n >= 6) over = true;
+    }
+    let reason = null;
+    if (!five) {
+      if (over) reason = '長連';
+      else {
+        let fours = 0, threes = 0;
+        for (const [dx, dy] of DIRS) {
+          if (dirHasFour(board, x, y, dx, dy)) fours++;
+          else if (dirHasLiveThree(board, x, y, dx, dy)) threes++;
+        }
+        if (fours >= 2) reason = '雙四';
+        else if (threes >= 2) reason = '雙活三';
+      }
+    }
+    board[y][x] = EMPTY;
+    return reason;
   }
 
   /* ---- AI ---- */
@@ -118,11 +207,13 @@
   }
 
   // 依啟發式分數排序的候選走法（攻守合算），供隨機模式與搜尋的走法排序共用
-  function rankedMoves(board, me) {
+  // renju: true 時過濾黑棋的禁手點
+  function rankedMoves(board, me, renju) {
     const foe = me === BLACK ? WHITE : BLACK;
     const scored = [];
     for (const key of candidateCells(board)) {
       const x = key % SIZE, y = Math.floor(key / SIZE);
+      if (renju && me === BLACK && forbiddenReason(board, x, y)) continue;
       const attack = pointScore(board, x, y, me);
       const defend = pointScore(board, x, y, foe);
       scored.push({ x, y, attack, defend, score: attack + defend * 0.9 });
@@ -164,16 +255,19 @@
   }
 
   // negamax + alpha-beta。回傳 player 視角的分數；越快達成的勝利分數越高（偏好速勝）。
-  function negamax(board, depth, alpha, beta, player) {
+  // stat.deadline（可選）：超過時標記 stat.aborted，結果不可信、由呼叫端丟棄
+  function negamax(board, depth, alpha, beta, player, renju, stat) {
+    if (stat.deadline && Date.now() > stat.deadline) { stat.aborted = true; return 0; }
     if (depth === 0) return evaluateBoard(board, player);
-    const moves = rankedMoves(board, player).slice(0, BRANCH);
-    if (!moves.length) return 0; // 滿盤和局
+    const moves = rankedMoves(board, player, renju).slice(0, BRANCH);
+    if (!moves.length) return 0; // 滿盤和局（或黑棋全為禁手點＝無路可走）
     let best = -Infinity;
     for (const mv of moves) {
       if (mv.attack >= 10000000) return WIN_SCORE + depth; // 這手直接連五
       board[mv.y][mv.x] = player;
-      const val = -negamax(board, depth - 1, -beta, -alpha, player === BLACK ? WHITE : BLACK);
+      const val = -negamax(board, depth - 1, -beta, -alpha, player === BLACK ? WHITE : BLACK, renju, stat);
       board[mv.y][mv.x] = EMPTY;
+      if (stat.aborted) return 0;
       if (val > best) best = val;
       if (best > alpha) alpha = best;
       if (alpha >= beta) break; // 剪枝
@@ -181,20 +275,52 @@
     return best;
   }
 
+  // 根節點搜尋：回傳 { move, value, aborted }
+  function searchRoot(board, me, depth, renju, deadline) {
+    const scored = rankedMoves(board, me, renju);
+    const best = scored[0];
+    if (!best) return { move: null, value: 0, aborted: false };
+    if (best.attack >= 10000000) return { move: best, value: WIN_SCORE + depth, aborted: false };
+    const foe = me === BLACK ? WHITE : BLACK;
+    const stat = { deadline: deadline || 0, aborted: false };
+    let bestMv = best, bestVal = -Infinity, alpha = -Infinity;
+    for (const mv of scored.slice(0, BRANCH)) {
+      board[mv.y][mv.x] = me;
+      const val = -negamax(board, depth - 1, -Infinity, -alpha, foe, renju, stat);
+      board[mv.y][mv.x] = EMPTY;
+      if (stat.aborted) break;
+      if (val > bestVal) { bestVal = val; bestMv = mv; }
+      if (bestVal > alpha) alpha = bestVal;
+    }
+    return { move: bestMv, value: bestVal, aborted: stat.aborted };
+  }
+
+  // 難度預設：aiMove 的 opts.level 可用鍵。master 用時間預算迭代加深。
+  const AI_LEVELS = {
+    easy: { depth: 0, jitter: 0.7, pool: 4 },
+    medium: { depth: 2 },
+    hard: { depth: SEARCH_DEPTH },
+    master: { timeBudget: 1500, maxDepth: 10 },
+  };
+
+  // opts.level: 'easy'|'medium'|'hard'|'master'（difficulty 預設，個別欄位可再覆寫）
   // opts.jitter: 0~1 隨機程度；opts.pool: 隨機時的候選數；opts.rng: 隨機來源（測試用）
-  // opts.depth: 搜尋層數（預設 SEARCH_DEPTH；設 0 = 只用單手啟發式）
+  // opts.depth: 搜尋層數（設 0 = 只用單手啟發式）
+  // opts.timeBudget: 毫秒；設定時改用迭代加深（深度 2,4,6… 直到 opts.maxDepth 或時間用完）
   function aiMove(game, opts) {
-    const o = opts || {};
+    let o = opts || {};
+    if (o.level && AI_LEVELS[o.level]) o = Object.assign({}, AI_LEVELS[o.level], o);
     const rng = o.rng || Math.random;
     const jitter = o.jitter || 0;
     const pool = o.pool || 1;
     const me = game.current;
     const board = game.board;
-    const scored = rankedMoves(board, me);
+    const renju = !!game.renju;
+    const scored = rankedMoves(board, me, renju);
     const best = scored[0];
     if (!best) return null;
     if (best.attack >= 10000000) return { x: best.x, y: best.y }; // 直接獲勝
-    // 隨機模式（觀戰用）：沿用單手啟發式；攸關勝負的一手（擋四以上）不受隨機影響
+    // 隨機模式（觀戰／入門用）：單手啟發式；攸關勝負的一手（擋四以上）不受隨機影響
     if (jitter > 0) {
       if (best.score >= 90000) return { x: best.x, y: best.y };
       const floor = best.score * (1 - 0.3 * jitter);
@@ -204,21 +330,69 @@
     }
     // 對手下一手就能連五 → 只有這一擋，不必搜尋
     if (best.defend >= 10000000) return { x: best.x, y: best.y };
+    if (o.timeBudget) {
+      // 迭代加深：時間用完就採用最後一個完整深度的結果
+      let mv = { x: best.x, y: best.y };
+      const deadline = Date.now() + o.timeBudget;
+      const maxD = o.maxDepth || 10;
+      for (let d = 2; d <= maxD; d += 2) {
+        const res = searchRoot(board, me, d, renju, deadline);
+        if (res.aborted) break;
+        if (res.move) mv = { x: res.move.x, y: res.move.y };
+        if (res.value >= WIN_SCORE) break; // 已找到必勝路線
+      }
+      return mv;
+    }
     const depth = o.depth === undefined ? SEARCH_DEPTH : o.depth;
     if (depth <= 0) return { x: best.x, y: best.y };
-    // 多步搜尋：對啟發式前幾名候選逐一往下算
-    const foe = me === BLACK ? WHITE : BLACK;
-    let bestMv = best, bestVal = -Infinity;
-    let alpha = -Infinity;
-    for (const mv of scored.slice(0, BRANCH)) {
-      board[mv.y][mv.x] = me;
-      const val = -negamax(board, depth - 1, -Infinity, -alpha, foe);
-      board[mv.y][mv.x] = EMPTY;
-      if (val > bestVal) { bestVal = val; bestMv = mv; }
-      if (bestVal > alpha) alpha = bestVal;
-    }
-    return { x: bestMv.x, y: bestMv.y };
+    const res = searchRoot(board, me, depth, renju, 0);
+    return res.move ? { x: res.move.x, y: res.move.y } : { x: best.x, y: best.y };
   }
 
-  return { SIZE, EMPTY, BLACK, WHITE, createGame, place, undo, aiMove, findWinLine };
+  /* ---- 分析工具（教練模式與教學關卡用） ---- */
+
+  // 目前輪到的一方在 depth 層內是否有必勝路線
+  function forcedWin(game, depth) {
+    const res = searchRoot(game.board, game.current, depth || SEARCH_DEPTH, !!game.renju, 0);
+    return res.value >= WIN_SCORE;
+  }
+
+  // 目前輪到的一方在 depth 層內是否無論如何都輸（對手必勝）
+  function forcedLoss(game, depth) {
+    const res = searchRoot(game.board, game.current, depth || SEARCH_DEPTH, !!game.renju, 0);
+    return res.value <= -WIN_SCORE;
+  }
+
+  // 盤面威脅點清單：[{x, y, kind}]，kind 依急迫度：
+  // 'win' 我方連五點｜'block' 對方連五點（必擋）｜'attack' 我方雙威脅/活四點｜
+  // 'danger' 對方雙威脅/活四點｜'three' 我方活三點｜'watch' 對方活三點｜
+  // 'forbidden' 禁手點（僅 renju 開啟且輪到黑棋時，附 reason）
+  function hints(game) {
+    const me = game.current, foe = me === BLACK ? WHITE : BLACK;
+    const board = game.board;
+    const renju = !!game.renju;
+    const out = [];
+    for (const key of candidateCells(board)) {
+      const x = key % SIZE, y = Math.floor(key / SIZE);
+      if (renju && me === BLACK) {
+        const reason = forbiddenReason(board, x, y);
+        if (reason) { out.push({ x, y, kind: 'forbidden', reason }); continue; }
+      }
+      const a = pointScore(board, x, y, me);
+      const d = pointScore(board, x, y, foe);
+      if (a >= 10000000) out.push({ x, y, kind: 'win' });
+      else if (d >= 10000000) out.push({ x, y, kind: 'block' });
+      else if (a >= 800000) out.push({ x, y, kind: 'attack' });
+      else if (d >= 800000) out.push({ x, y, kind: 'danger' });
+      else if (a >= 50000) out.push({ x, y, kind: 'three' });
+      else if (d >= 50000) out.push({ x, y, kind: 'watch' });
+    }
+    return out;
+  }
+
+  return {
+    SIZE, EMPTY, BLACK, WHITE, AI_LEVELS,
+    createGame, place, undo, aiMove, findWinLine,
+    forbiddenReason, forcedWin, forcedLoss, hints,
+  };
 });

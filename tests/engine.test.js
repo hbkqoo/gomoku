@@ -120,6 +120,121 @@ console.log('AI 多步搜尋');
   assert(mv.x === 7 && mv.y === 7, '空盤 AI 下天元');
 }
 
+/* ---- 禁手規則 ---- */
+
+console.log('禁手規則');
+{
+  // 雙活三：黑 (6,8),(7,8) 橫向活二 ＋ (6,7),(7,6) 斜向活二，交叉點 (5,8) 形成雙活三
+  const g = E.createGame({ renju: true });
+  for (const [x, y] of [[6, 8], [2, 2], [7, 8], [12, 2], [6, 7], [2, 12], [7, 6], [11, 11]]) E.place(g, x, y);
+  assert(E.forbiddenReason(g.board, 5, 8) === '雙活三', '偵測雙活三禁手');
+  assert(E.place(g, 5, 8) === false, 'renju 開啟時黑棋不能下雙活三');
+  assert(g.board[8][5] === E.EMPTY, '禁手點未被落子');
+}
+{
+  // 同一局面 renju 關閉：可以下
+  const g = E.createGame();
+  for (const [x, y] of [[6, 8], [2, 2], [7, 8], [12, 2], [6, 7], [2, 12], [7, 6], [11, 11]]) E.place(g, x, y);
+  assert(E.place(g, 5, 8) === true, 'renju 關閉時雙活三可下');
+}
+{
+  // 雙四：黑 (4..6,7) 沖四線 ＋ (7,4..6) 沖四線，交叉點 (7,7)
+  const g = E.createGame({ renju: true });
+  for (const [x, y] of [[4, 7], [3, 7], [5, 7], [7, 3], [6, 7], [2, 2], [7, 4], [12, 2], [7, 5], [2, 12], [7, 6], [12, 12]]) E.place(g, x, y);
+  assert(E.forbiddenReason(g.board, 7, 7) === '雙四', '偵測雙四禁手');
+}
+{
+  // 長連：黑 (3..7,7) 中間缺 (5,7)，補上後成六連
+  const g = E.createGame({ renju: true });
+  for (const [x, y] of [[2, 7], [0, 0], [3, 7], [0, 1], [4, 7], [0, 2], [6, 7], [0, 3], [7, 7], [0, 4]]) E.place(g, x, y);
+  assert(E.forbiddenReason(g.board, 5, 7) === '長連', '偵測長連禁手');
+  assert(E.place(g, 5, 7) === false, '長連不能下');
+}
+{
+  // 連五優先於禁手：形成恰好五連的一手即使同時帶出其他棋形也合法
+  const g = E.createGame({ renju: true });
+  for (const [x, y] of [[3, 7], [0, 0], [4, 7], [0, 1], [5, 7], [0, 2], [6, 7], [0, 3]]) E.place(g, x, y);
+  assert(E.place(g, 7, 7) === true, '連五的一手合法');
+  assert(g.winner === E.BLACK, '連五獲勝');
+}
+{
+  // 白棋不受禁手限制
+  const g = E.createGame({ renju: true });
+  for (const [x, y] of [[0, 0], [6, 8], [0, 1], [7, 8], [0, 2], [6, 7], [0, 3], [7, 6], [0, 5]]) E.place(g, x, y);
+  // 輪到白，(5,8) 對白是雙活三形——白可下
+  assert(E.place(g, 5, 8) === true, '白棋不受禁手限制');
+}
+{
+  // AI 執黑在 renju 下避開禁手點
+  const g = E.createGame({ renju: true });
+  for (const [x, y] of [[6, 8], [2, 2], [7, 8], [12, 2], [6, 7], [2, 12], [7, 6], [11, 11]]) E.place(g, x, y);
+  const mv = E.aiMove(g, { depth: 2 });
+  assert(mv && !(mv.x === 5 && mv.y === 8) && E.forbiddenReason(g.board, mv.x, mv.y) === null,
+    'AI 黑棋避開禁手點（下在 ' + mv.x + ',' + mv.y + '）');
+}
+
+/* ---- 難度分級 ---- */
+
+console.log('難度分級');
+{
+  const mk = () => {
+    const g = E.createGame();
+    for (const [x, y] of [[7, 7], [8, 8], [7, 8], [8, 7], [6, 6], [9, 9]]) E.place(g, x, y);
+    return g;
+  };
+  for (const lv of ['easy', 'medium', 'hard', 'master']) {
+    const g = mk();
+    const t0 = Date.now();
+    const mv = E.aiMove(g, { level: lv });
+    const ms = Date.now() - t0;
+    assert(mv && g.board[mv.y][mv.x] === E.EMPTY, `level=${lv} 回傳合法空點（${ms} ms）`);
+    if (lv === 'master') assert(ms < 2500, 'master 思考時間在預算內（' + ms + ' ms）');
+  }
+  // 各級都必須擋對方的四（基本底線，入門也一樣）
+  for (const lv of ['easy', 'medium', 'hard', 'master']) {
+    const g = E.createGame();
+    for (const [x, y] of [[2, 7], [3, 7], [14, 0], [4, 7], [0, 14], [5, 7], [14, 14], [6, 7]]) E.place(g, x, y);
+    const mv = E.aiMove(g, { level: lv });
+    assert(mv.x === 7 && mv.y === 7, `level=${lv} 會擋沖四`);
+  }
+}
+
+/* ---- 分析工具：hints 與 forcedWin ---- */
+
+console.log('分析工具');
+{
+  // 黑有活四（3..6,7），輪到白：白視角應有 block 提示在 (2,7) 與 (7,7)
+  const g = E.createGame();
+  for (const [x, y] of [[3, 7], [3, 0], [4, 7], [4, 0], [5, 7], [5, 0], [6, 7], [6, 0], [10, 10]]) E.place(g, x, y);
+  // 9 手後輪到白
+  const hs = E.hints(g);
+  const blocks = hs.filter((h) => h.kind === 'block').map((h) => h.x + ',' + h.y);
+  assert(blocks.includes('2,7') && blocks.includes('7,7'), 'hints 標出必擋點（' + blocks.join(' / ') + '）');
+}
+{
+  // 黑有活三，輪到黑：黑的活四點應標為 attack 或 three
+  const g = E.createGame();
+  for (const [x, y] of [[4, 7], [0, 0], [5, 7], [0, 1], [6, 7], [0, 2]]) E.place(g, x, y);
+  const hs = E.hints(g);
+  const mine = hs.filter((h) => (h.kind === 'attack' || h.kind === 'three') && h.y === 7 && (h.x === 3 || h.x === 7));
+  assert(mine.length === 2, 'hints 標出我方活三的延伸點');
+}
+{
+  // forcedWin：黑有活四 → 黑必勝；空盤 → 非必勝
+  const g = E.createGame();
+  for (const [x, y] of [[3, 7], [3, 0], [4, 7], [4, 0], [5, 7], [5, 0], [6, 7], [6, 0]]) E.place(g, x, y);
+  assert(E.forcedWin(g, 2) === true, 'forcedWin：活四在手 → 必勝');
+  const empty = E.createGame();
+  assert(E.forcedWin(empty, 2) === false, 'forcedWin：空盤 → 非必勝');
+}
+{
+  // forcedLoss：對方活四且自己無威脅 → 必敗（白的填子放四角避免成線）
+  const g = E.createGame();
+  for (const [x, y] of [[3, 7], [0, 0], [4, 7], [14, 0], [5, 7], [0, 14], [6, 7], [14, 14], [12, 12]]) E.place(g, x, y);
+  // 輪到白，黑有活四（兩端皆空）
+  assert(E.forcedLoss(g, 3) === true, 'forcedLoss：對方活四 → 必敗');
+}
+
 /* ---- AI：速度 ---- */
 
 console.log('AI 速度');
