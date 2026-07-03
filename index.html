@@ -6,7 +6,7 @@
 <title>3D 五子棋 — 第一人稱對弈</title>
 <meta name="theme-color" content="#10141c">
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
-<link rel="stylesheet" href="style.css?v=2">
+<link rel="stylesheet" href="style.css?v=3">
 </head>
 <body>
 <div id="app">
@@ -19,9 +19,22 @@
         <button id="btn-speed">1x</button>
         <span id="rewind-badge">時間倒轉 ×0</span>
       </span>
+      <span id="replay-ctrl">
+        <button id="rp-first">⏮</button>
+        <button id="rp-prev">◀</button>
+        <span id="rp-pos">0/0</span>
+        <button id="rp-next">▶</button>
+        <button id="rp-last">⏭</button>
+        <button id="rp-close">結束回放</button>
+      </span>
+      <button id="btn-replay" style="display:none">回放</button>
+      <button id="btn-hint" style="display:none">提示</button>
+      <button id="btn-coach">教練</button>
+      <button id="btn-lessons">教學</button>
       <button id="btn-new">新對局</button>
       <button id="btn-undo">悔棋</button>
       <button id="btn-rank">排行榜</button>
+      <button id="btn-sound" title="音效開關">🔊</button>
     </div>
   </header>
 
@@ -85,6 +98,18 @@
           <button data-side="2">白棋（後手）</button>
         </div>
       </div>
+      <div class="field" id="field-level" style="display:none">
+        <span class="label">電腦強度</span>
+        <div class="seg" id="seg-level">
+          <button data-level="easy">入門</button>
+          <button data-level="medium" class="on">進階</button>
+          <button data-level="hard">困難</button>
+          <button data-level="master">大師</button>
+        </div>
+      </div>
+      <div class="field" id="field-rules">
+        <label class="chk"><input type="checkbox" id="chk-renju"> 禁手規則（黑棋禁雙活三、雙四、長連）</label>
+      </div>
       <button class="primary" id="btn-start">開始</button>
     </div>
   </div>
@@ -126,6 +151,30 @@
     </div>
   </div>
 
+  <!-- 教學關卡列表 -->
+  <div class="modal" id="modal-lessons">
+    <div class="panel wide">
+      <h2>教學：必勝棋法</h2>
+      <p>從殘局中找出致勝下法。下對了對手會全力防守，下錯了會退回讓你重試，卡關可按「提示」。</p>
+      <div id="lesson-list"></div>
+      <div class="row">
+        <button class="primary" id="btn-lessons-close">關閉</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 過關 -->
+  <div class="modal" id="modal-lesson-done">
+    <div class="panel">
+      <h2 id="ld-title">過關！</h2>
+      <p id="ld-text"></p>
+      <div class="row">
+        <button id="ld-list">關卡列表</button>
+        <button class="primary" id="ld-next">下一關</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 排行榜 -->
   <div class="modal" id="modal-rank">
     <div class="panel wide">
@@ -138,7 +187,8 @@
     </div>
   </div>
 </div>
-<script src="engine.js?v=2"></script>
-<script src="main.js?v=2"></script>
+<script src="engine.js?v=3"></script>
+<script src="lessons.js?v=3"></script>
+<script src="main.js?v=3"></script>
 </body>
 </html>

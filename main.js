@@ -76,14 +76,74 @@
 
   /* ---------- 遊戲狀態 ---------- */
   let game = E.createGame();
-  let mode = 'pvp';       // 'pvp' | 'ai'
+  let mode = 'pvp';       // 'pvp' | 'ai' | 'auto' | 'lesson'
+  let setupMode = 'pvp';  // 開局設定選單目前選的模式（與 mode 分開，避免教學模式污染）
   let humanSide = E.BLACK;
   let aiSide = E.WHITE;
+  let aiLevel = 'medium'; // 'easy' | 'medium' | 'hard' | 'master'
+  let renjuOn = false;    // 禁手規則
   let busy = false;       // AI 思考中
   let aiTimer = null;
   let startTime = 0;
   let hoverCell = null;
   let recorded = false;   // 本局已寫入排行榜
+  let coachOn = false;    // 教練模式：即時威脅高亮
+  let hintCell = null;    // 「提示」按鈕的建議點
+  const coachCache = { key: '', list: [] };
+  const replay = { active: false, index: 0, board: null }; // 棋譜回放
+  const lessonState = { active: null, idx: -1, moves: 0, busyAI: false };
+  const lessons = typeof GomokuLessons !== 'undefined' ? GomokuLessons : [];
+
+  /* ---------- 音效（Web Audio 合成，不需音檔） ---------- */
+  const sound = (() => {
+    let ctx = null, enabled = true;
+    try { enabled = localStorage.getItem('gomoku3d-sound') !== '0'; } catch {}
+    function ac() {
+      if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
+      if (ctx.state === 'suspended') ctx.resume();
+      return ctx;
+    }
+    function tone(freq, dur, gain, delay, type) {
+      const c = ac(), t = c.currentTime + (delay || 0);
+      const o = c.createOscillator(), g = c.createGain();
+      o.type = type || 'sine';
+      o.frequency.setValueAtTime(freq, t);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(gain, t + 0.008);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g).connect(c.destination);
+      o.start(t); o.stop(t + dur + 0.02);
+    }
+    return {
+      get enabled() { return enabled; },
+      toggle() {
+        enabled = !enabled;
+        try { localStorage.setItem('gomoku3d-sound', enabled ? '1' : '0'); } catch {}
+        return enabled;
+      },
+      stone() { // 清脆的落子聲：高頻敲擊＋短噪音
+        if (!enabled) return;
+        try {
+          tone(1500, 0.07, 0.35);
+          const c = ac(), t = c.currentTime;
+          const nb = c.createBuffer(1, 1500, c.sampleRate);
+          const data = nb.getChannelData(0);
+          for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * Math.exp(-i / 200);
+          const src = c.createBufferSource(); src.buffer = nb;
+          const ng = c.createGain(); ng.gain.value = 0.18;
+          src.connect(ng).connect(c.destination); src.start(t);
+        } catch {}
+      },
+      win() { // 勝利小琶音
+        if (!enabled) return;
+        try { tone(660, 0.16, 0.25); tone(880, 0.16, 0.25, 0.12); tone(1320, 0.3, 0.25, 0.24); } catch {}
+      },
+      deny() { // 禁手／下錯提示
+        if (!enabled) return;
+        try { tone(220, 0.12, 0.2, 0, 'square'); } catch {}
+      },
+    };
+  })();
 
   /* ---------- SVG 渲染 ---------- */
   let screenPts = [];
@@ -162,11 +222,13 @@
       screenPts.push(row);
     }
 
-    /* 棋子（含陰影，遠到近排序） */
+    /* 棋子（含陰影，遠到近排序）；回放模式顯示截至 replay.index 的盤面 */
+    const dispBoard = replay.active ? replay.board : game.board;
+    const dispMoves = replay.active ? game.moves.slice(0, replay.index) : game.moves;
     const stones = [];
     for (let gy = 0; gy < SIZE; gy++) {
       for (let gx = 0; gx < SIZE; gx++) {
-        const v = game.board[gy][gx];
+        const v = dispBoard[gy][gx];
         if (v) stones.push({ gx, gy, v });
       }
     }
@@ -190,19 +252,21 @@
       })
       .filter(Boolean)
       .sort((a, b2) => b2.c.d - a.c.d);
-    const last = game.moves[game.moves.length - 1];
+    const last = dispMoves[dispMoves.length - 1];
+    const showLastMark = replay.active || !game.winner;
     for (const s of items) {
       const rx = F * STONE_R / s.c.d, ry = rx * squash;
       const shp = project(s.wx + 0.08, 0.01, s.wz + 0.08);
       if (shp) sh += `<ellipse cx="${shp.x.toFixed(1)}" cy="${shp.y.toFixed(1)}" rx="${(rx * 1.02).toFixed(1)}" ry="${(rx * sp_ * 0.95).toFixed(1)}" fill="rgba(0,0,0,${(0.28 * s.op).toFixed(2)})"/>`;
       st += `<ellipse cx="${s.c.x.toFixed(1)}" cy="${s.c.y.toFixed(1)}" rx="${rx.toFixed(1)}" ry="${ry.toFixed(1)}" fill="url(#g-${s.v === E.BLACK ? 'black' : 'white'})"${s.op < 1 ? ` opacity="${s.op.toFixed(2)}"` : ''}/>`;
-      if (last && last.x === s.gx && last.y === s.gy && !game.winner) {
-        st += `<circle cx="${s.c.x.toFixed(1)}" cy="${(s.c.y - ry * 0.15).toFixed(1)}" r="${Math.max(2, rx * 0.18).toFixed(1)}" fill="#e5484d"/>`;
+      if (last && last.x === s.gx && last.y === s.gy && showLastMark) {
+        // 最後一手：紅色圓環標記
+        st += `<ellipse cx="${s.c.x.toFixed(1)}" cy="${s.c.y.toFixed(1)}" rx="${(rx * 1.28).toFixed(1)}" ry="${(ry * 1.28).toFixed(1)}" fill="none" stroke="#e5484d" stroke-width="2.2" opacity=".9"/>`;
       }
     }
 
     /* 預覽棋子 */
-    if (hoverCell && !game.winner && !busy && mode !== 'auto' && !intro.active && game.board[hoverCell.gy][hoverCell.gx] === E.EMPTY) {
+    if (hoverCell && !game.winner && !busy && mode !== 'auto' && !intro.active && !replay.active && game.board[hoverCell.gy][hoverCell.gx] === E.EMPTY) {
       const c = project(gx2w(hoverCell.gx), STONE_H, gx2w(hoverCell.gy));
       if (c) {
         const rx = F * STONE_R / c.d;
@@ -219,7 +283,7 @@
         .map((p) => ({ p, d: toView(p.x, p.y, p.z).d }))
         .sort((a, b2) => b2.d - a.d);
       for (const it of plats) if (it.d > NEAR) fx += platformSvg(it.p, time);
-    } else if (game.winLine && !flee.active) {
+    } else if (game.winLine && !flee.active && (!replay.active || replay.index >= game.moves.length)) {
       const pts = game.winLine
         .map((c) => project(gx2w(c.x), STONE_H + 0.05, gx2w(c.y)))
         .filter(Boolean);
@@ -228,6 +292,53 @@
         const p1 = ends[0], p2 = ends[ends.length - 1];
         fx += `<line x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}" stroke="#ffd166" stroke-width="5" stroke-linecap="round" opacity=".85"/>`;
         for (const p of pts) fx += `<circle cx="${p.x}" cy="${p.y}" r="${(F * 0.5 / p.d).toFixed(1)}" fill="none" stroke="#ffd166" stroke-width="2.5"/>`;
+      }
+    }
+
+    /* 教練模式：威脅點高亮（僅玩家回合、非回放/觀戰/教學 AI 思考中） */
+    const coachVisible = coachOn && !replay.active && !intro.active && mode !== 'auto' &&
+      !game.winner && !busy && !lessonState.busyAI &&
+      (mode !== 'ai' || game.current !== aiSide);
+    if (coachVisible) {
+      const key = mode + ':' + game.moves.length + ':' + game.current;
+      if (coachCache.key !== key) {
+        coachCache.key = key;
+        coachCache.list = E.hints(game);
+      }
+      // 依急迫度過濾：有連五級威脅時只顯示連五級，避免滿盤標記
+      const listAll = coachCache.list;
+      const urgent = listAll.filter((h) => h.kind === 'win' || h.kind === 'block');
+      const strong = listAll.filter((h) => h.kind === 'attack' || h.kind === 'danger');
+      const weak = listAll.filter((h) => h.kind === 'three' || h.kind === 'watch');
+      const forb = listAll.filter((h) => h.kind === 'forbidden');
+      const shown = urgent.length ? urgent : (strong.length ? strong : weak);
+      const COACH_COLOR = {
+        win: '#ffd166', block: '#e5484d', attack: '#ff9f43',
+        danger: '#f06595', three: '#4dabf7', watch: '#74c0fc',
+      };
+      for (const h of shown) {
+        const p = project(gx2w(h.x), 0.03, gx2w(h.y));
+        if (!p) continue;
+        const r = F * 0.32 / p.d;
+        fx += `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${r.toFixed(1)}" fill="none" stroke="${COACH_COLOR[h.kind]}" stroke-width="2.4" opacity=".9"/>`;
+      }
+      for (const h of forb) {
+        const p = project(gx2w(h.x), 0.03, gx2w(h.y));
+        if (!p) continue;
+        const r = F * 0.2 / p.d;
+        fx += `<g stroke="#e03131" stroke-width="2.2" opacity=".85">` +
+          `<line x1="${(p.x - r).toFixed(1)}" y1="${(p.y - r).toFixed(1)}" x2="${(p.x + r).toFixed(1)}" y2="${(p.y + r).toFixed(1)}"/>` +
+          `<line x1="${(p.x - r).toFixed(1)}" y1="${(p.y + r).toFixed(1)}" x2="${(p.x + r).toFixed(1)}" y2="${(p.y - r).toFixed(1)}"/></g>`;
+      }
+    }
+
+    /* 「提示」建議點：金色雙環 */
+    if (hintCell && !replay.active && !game.winner) {
+      const p = project(gx2w(hintCell.x), 0.03, gx2w(hintCell.y));
+      if (p) {
+        const r = F * 0.36 / p.d;
+        fx += `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${r.toFixed(1)}" fill="none" stroke="#ffd166" stroke-width="3"/>` +
+          `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${(r * 0.55).toFixed(1)}" fill="#ffd166" opacity=".35"/>`;
       }
     }
     layers.fx.innerHTML = fx;
@@ -271,11 +382,22 @@
     return `${c}回合`;
   }
 
+  function updateTopbar() {
+    document.getElementById('btn-replay').style.display =
+      (game.winner && mode !== 'auto' && !replay.active && game.moves.length) ? '' : 'none';
+    document.getElementById('replay-ctrl').classList.toggle('show', replay.active);
+    document.getElementById('btn-hint').style.display = (coachOn || mode === 'lesson') ? '' : 'none';
+    document.getElementById('btn-coach').classList.toggle('on', coachOn);
+    document.getElementById('btn-sound').textContent = sound.enabled ? '🔊' : '🔇';
+  }
+
   function afterMove() {
     render();
     setStatus(turnText());
+    updateTopbar();
     if (game.winner) {
-      if (mode !== 'auto' && game.winner > 0 && !recorded) setTimeout(openWinModal, 900);
+      if (game.winner > 0) sound.win();
+      if (mode !== 'auto' && mode !== 'lesson' && game.winner > 0 && !recorded) setTimeout(openWinModal, 900);
       return;
     }
     scheduleAI();
@@ -287,23 +409,33 @@
     setStatus('電腦思考中…');
     aiTimer = setTimeout(() => {
       aiTimer = null;
-      const mv = E.aiMove(game);
-      if (mv) E.place(game, mv.x, mv.y);
+      const mv = E.aiMove(game, { level: aiLevel });
+      if (mv) { E.place(game, mv.x, mv.y); sound.stone(); }
       busy = false;
       afterMove();
     }, 380);
   }
 
   function tryPlace(gx, gy) {
-    if (busy || game.winner || mode === 'auto' || intro.active) return;
+    if (busy || game.winner || mode === 'auto' || intro.active || replay.active) return;
+    if (mode === 'lesson') return lessonPlace(gx, gy);
     if (mode === 'ai' && game.current === aiSide) return;
     if (E.place(game, gx, gy)) {
+      sound.stone();
       hoverCell = null;
+      hintCell = null;
       afterMove();
+    } else if (game.renju && game.current === E.BLACK) {
+      const r = E.forbiddenReason(game.board, gx, gy);
+      if (r) {
+        sound.deny();
+        setStatus(`禁手！黑棋不能下「${r}」`);
+      }
     }
   }
 
   function doUndo() {
+    if (replay.active) return exitReplay();
     if (aiTimer) { clearTimeout(aiTimer); aiTimer = null; busy = false; }
     if (mode === 'auto') {
       if (auto.timer) { clearTimeout(auto.timer); auto.timer = null; }
@@ -312,8 +444,10 @@
       resetCinematic();
       updateAutoUI();
     }
+    if (mode === 'lesson') return lessonUndo();
     if (!game.moves.length) return;
     recorded = false;
+    hintCell = null;
     E.undo(game);
     if (mode === 'ai' && game.current === aiSide && game.moves.length) E.undo(game);
     closeModal('modal-win');
@@ -324,9 +458,12 @@
     if (aiTimer) { clearTimeout(aiTimer); aiTimer = null; }
     if (auto.timer) { clearTimeout(auto.timer); auto.timer = null; }
     busy = false;
-    game = E.createGame();
+    replay.active = false;
+    lessonState.active = null;
+    game = E.createGame({ renju: renjuOn && mode !== 'auto' });
     recorded = false;
     hoverCell = null;
+    hintCell = null;
     startTime = Date.now();
     auto.rewinds = 0;
     auto.ended = false;
@@ -382,7 +519,7 @@
     // 觀戰模式雙方都用單手啟發式（depth: 0）：保持原作的強弱平衡，
     // 大哥太強的話對手永遠贏不了，時間倒轉與結局彩蛋就不會觸發
     const mv = E.aiMove(game, isBoss ? { depth: 0 } : { jitter: 1, pool: 4 });
-    if (mv) E.place(game, mv.x, mv.y);
+    if (mv) { E.place(game, mv.x, mv.y); sound.stone(); }
     render();
     setStatus(turnText());
     if (game.winner) return autoResolve();
@@ -621,6 +758,11 @@
   }, { passive: false });
 
   window.addEventListener('keydown', (e) => {
+    if (replay.active) {
+      if (e.key === 'ArrowLeft') return setReplayIndex(replay.index - 1);
+      if (e.key === 'ArrowRight') return setReplayIndex(replay.index + 1);
+      if (e.key === 'Escape') return exitReplay();
+    }
     if ((e.ctrlKey && e.key === 'z') || e.key === 'u') doUndo();
   });
 
@@ -773,22 +915,222 @@
     });
   }
   segInit('seg-mode', (btn) => {
-    mode = btn.dataset.mode;
-    document.getElementById('field-side').style.display = mode === 'ai' ? '' : 'none';
-    document.getElementById('auto-desc').style.display = mode === 'auto' ? '' : 'none';
+    setupMode = btn.dataset.mode;
+    document.getElementById('field-side').style.display = setupMode === 'ai' ? '' : 'none';
+    document.getElementById('field-level').style.display = setupMode === 'ai' ? '' : 'none';
+    document.getElementById('field-rules').style.display = setupMode === 'auto' ? 'none' : '';
+    document.getElementById('auto-desc').style.display = setupMode === 'auto' ? '' : 'none';
   });
   segInit('seg-side', (btn) => {
     humanSide = +btn.dataset.side;
     aiSide = humanSide === E.BLACK ? E.WHITE : E.BLACK;
   });
+  segInit('seg-level', (btn) => { aiLevel = btn.dataset.level; });
   document.getElementById('field-side').style.display = 'none';
+  document.getElementById('field-level').style.display = 'none';
 
   document.getElementById('btn-start').addEventListener('click', () => {
+    mode = setupMode;
+    renjuOn = document.getElementById('chk-renju').checked;
     closeModal('modal-setup');
     newGame();
   });
   document.getElementById('btn-new').addEventListener('click', () => openModal('modal-setup'));
   document.getElementById('btn-undo').addEventListener('click', doUndo);
+
+  /* ---------- 棋譜回放 ---------- */
+  function setReplayIndex(i) {
+    replay.index = Math.max(0, Math.min(game.moves.length, i));
+    replay.board = Array.from({ length: SIZE }, () => new Array(SIZE).fill(E.EMPTY));
+    for (let k = 0; k < replay.index; k++) {
+      const m = game.moves[k];
+      replay.board[m.y][m.x] = m.player;
+    }
+    document.getElementById('rp-pos').textContent = `${replay.index}/${game.moves.length}`;
+    render();
+    setStatus(`回放中：第 ${replay.index}/${game.moves.length} 手`);
+  }
+  function enterReplay() {
+    if (!game.moves.length) return;
+    replay.active = true;
+    hoverCell = null;
+    setReplayIndex(0);
+    updateTopbar();
+  }
+  function exitReplay() {
+    replay.active = false;
+    render();
+    setStatus(turnText());
+    updateTopbar();
+  }
+  document.getElementById('btn-replay').addEventListener('click', enterReplay);
+  document.getElementById('rp-first').addEventListener('click', () => setReplayIndex(0));
+  document.getElementById('rp-prev').addEventListener('click', () => setReplayIndex(replay.index - 1));
+  document.getElementById('rp-next').addEventListener('click', () => setReplayIndex(replay.index + 1));
+  document.getElementById('rp-last').addEventListener('click', () => setReplayIndex(game.moves.length));
+  document.getElementById('rp-close').addEventListener('click', exitReplay);
+
+  /* ---------- 教練模式與提示 ---------- */
+  document.getElementById('btn-coach').addEventListener('click', () => {
+    coachOn = !coachOn;
+    coachCache.key = '';
+    updateTopbar();
+    render();
+    if (coachOn) setStatus('教練模式開啟：棋盤標出雙方威脅點');
+  });
+  document.getElementById('btn-hint').addEventListener('click', () => {
+    if (game.winner || busy || replay.active || intro.active || lessonState.busyAI) return;
+    if (mode === 'ai' && game.current === aiSide) return;
+    if (mode === 'auto') return;
+    setStatus('分析中…');
+    setTimeout(() => {
+      const mv = E.aiMove(game, { level: 'hard' });
+      if (mv) {
+        hintCell = mv;
+        render();
+        setStatus(mode === 'lesson' ? '金色標記是建議的下一手' : '提示：金色標記是建議的下一手');
+      }
+    }, 30);
+  });
+  document.getElementById('btn-sound').addEventListener('click', () => {
+    sound.toggle();
+    updateTopbar();
+  });
+
+  /* ---------- 教學關卡 ---------- */
+  const LESSON_KEY = 'gomoku3d-lessons-done';
+  function loadLessonDone() {
+    try {
+      const d = JSON.parse(localStorage.getItem(LESSON_KEY));
+      return new Set(Array.isArray(d) ? d : []);
+    } catch { return new Set(); }
+  }
+  function saveLessonDone(set) {
+    try { localStorage.setItem(LESSON_KEY, JSON.stringify([...set])); } catch {}
+  }
+
+  function renderLessonList() {
+    const done = loadLessonDone();
+    document.getElementById('lesson-list').innerHTML = lessons
+      .map((L, i) => `
+        <button class="lesson-item${done.has(L.id) ? ' done' : ''}" data-i="${i}">
+          <span class="lt">${done.has(L.id) ? '✓ ' : ''}${escapeHtml(L.subtitle)}｜${escapeHtml(L.title)}</span>
+          <span class="ld">${escapeHtml(L.desc)}</span>
+        </button>`)
+      .join('');
+  }
+
+  function lessonStatus() {
+    const L = lessonState.active;
+    setStatus(`【${L.title}】${L.goal} — 你執黑棋`);
+  }
+
+  function startLesson(i) {
+    const L = lessons[i];
+    if (!L) return;
+    if (aiTimer) { clearTimeout(aiTimer); aiTimer = null; }
+    if (auto.timer) { clearTimeout(auto.timer); auto.timer = null; }
+    busy = false;
+    mode = 'lesson';
+    lessonState.idx = i;
+    lessonState.active = L;
+    lessonState.moves = 0;
+    lessonState.busyAI = false;
+    replay.active = false;
+    game = E.createGame();
+    for (const [x, y] of L.setup) E.place(game, x, y);
+    recorded = true; // 教學局不進排行榜
+    hoverCell = null;
+    hintCell = null;
+    resetCinematic();
+    updateAutoUI();
+    closeModal('modal-lessons');
+    closeModal('modal-lesson-done');
+    render();
+    lessonStatus();
+    updateTopbar();
+  }
+
+  function lessonPlace(gx, gy) {
+    if (lessonState.busyAI || !lessonState.active) return;
+    const L = lessonState.active;
+    if (!E.place(game, gx, gy)) return;
+    sound.stone();
+    hoverCell = null;
+    hintCell = null;
+    lessonState.moves++;
+    render();
+    if (game.winner === E.BLACK) return lessonComplete();
+    // 判題：這一手之後對手（白）必須仍是必敗，且未超過步數上限
+    const stillWinning = E.forcedLoss(game, L.checkDepth);
+    if (!stillWinning || lessonState.moves > L.maxMoves) {
+      sound.deny();
+      setStatus(stillWinning ? '超過本關步數上限了，退回重試' : '這一手讓必勝機會溜走了，退回重試（可按「提示」）');
+      lessonState.busyAI = true;
+      setTimeout(() => {
+        E.undo(game);
+        lessonState.moves--;
+        lessonState.busyAI = false;
+        render();
+      }, 1100);
+      return;
+    }
+    // 對手全力防守
+    lessonState.busyAI = true;
+    setStatus('對手防守中…');
+    setTimeout(() => {
+      const mv = E.aiMove(game, { level: 'hard' });
+      if (mv) { E.place(game, mv.x, mv.y); sound.stone(); }
+      lessonState.busyAI = false;
+      render();
+      if (game.winner === E.BLACK) return lessonComplete();
+      lessonStatus();
+    }, 480);
+  }
+
+  function lessonUndo() {
+    if (lessonState.busyAI || !lessonState.active) return;
+    const base = lessonState.active.setup.length;
+    // 退回到玩家回合（一次退掉白的回應與玩家的一手）
+    while (game.moves.length > base && game.current !== E.BLACK) E.undo(game);
+    if (game.moves.length > base) {
+      E.undo(game);
+      lessonState.moves = Math.max(0, lessonState.moves - 1);
+    }
+    hintCell = null;
+    render();
+    lessonStatus();
+  }
+
+  function lessonComplete() {
+    const L = lessonState.active;
+    sound.win();
+    render();
+    const done = loadLessonDone();
+    done.add(L.id);
+    saveLessonDone(done);
+    setStatus(`【${L.title}】過關！`);
+    document.getElementById('ld-title').textContent = `過關！${L.title}`;
+    document.getElementById('ld-text').textContent = L.explain;
+    document.getElementById('ld-next').style.display = lessonState.idx + 1 < lessons.length ? '' : 'none';
+    setTimeout(() => openModal('modal-lesson-done'), 700);
+  }
+
+  document.getElementById('btn-lessons').addEventListener('click', () => {
+    renderLessonList();
+    openModal('modal-lessons');
+  });
+  document.getElementById('btn-lessons-close').addEventListener('click', () => closeModal('modal-lessons'));
+  document.getElementById('lesson-list').addEventListener('click', (e) => {
+    const btn = e.target.closest('.lesson-item');
+    if (btn) startLesson(+btn.dataset.i);
+  });
+  document.getElementById('ld-next').addEventListener('click', () => startLesson(lessonState.idx + 1));
+  document.getElementById('ld-list').addEventListener('click', () => {
+    closeModal('modal-lesson-done');
+    renderLessonList();
+    openModal('modal-lessons');
+  });
 
   /* ---------- 啟動 ---------- */
   window.addEventListener('resize', resize);

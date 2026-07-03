@@ -148,6 +148,51 @@ input[type=text]:focus { border-color: #d9b878; }
 /* 觀戰控制 */
 #auto-ctrl { display: none; align-items: center; gap: 8px; }
 #auto-ctrl.show { display: inline-flex; }
+
+/* 回放控制 */
+#replay-ctrl { display: none; align-items: center; gap: 6px; }
+#replay-ctrl.show { display: inline-flex; }
+#replay-ctrl button { padding: 5px 10px; }
+#rp-pos {
+  font-size: 13px;
+  color: #d9b878;
+  min-width: 48px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+/* 教練模式開關 */
+#btn-coach.on { background: #b8873a; border-color: #d9b878; color: #16120a; font-weight: 700; }
+
+/* 禁手規則勾選 */
+.chk {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: #b9c0d0;
+  cursor: pointer;
+}
+.chk input { width: 16px; height: 16px; accent-color: #b8873a; }
+
+/* 教學關卡列表 */
+#lesson-list { display: flex; flex-direction: column; gap: 8px; max-height: 52vh; overflow-y: auto; }
+.lesson-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+  text-align: left;
+  padding: 10px 14px;
+  background: #10141c;
+  border: 1px solid #2a3245;
+  border-radius: 10px;
+}
+.lesson-item:hover { background: #1b2334; }
+.lesson-item .lt { font-size: 15px; font-weight: 700; color: #e8e6df; }
+.lesson-item .ld { font-size: 12.5px; color: #8f9ab3; line-height: 1.5; }
+.lesson-item.done { border-color: #b8873a; }
+.lesson-item.done .lt { color: #d9b878; }
 #rewind-badge {
   font-size: 12px;
   color: #ffd166;
