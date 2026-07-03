@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>3D 五子棋 — 第一人稱對弈</title>
+<meta name="theme-color" content="#10141c">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="stylesheet" href="style.css?v=2">
+</head>
+<body>
+<div id="app">
+  <header id="topbar">
+    <h1>3D 五子棋</h1>
+    <div id="status" aria-live="polite">黑棋回合</div>
+    <div id="controls">
+      <span id="auto-ctrl">
+        <button id="btn-pause">暫停</button>
+        <button id="btn-speed">1x</button>
+        <span id="rewind-badge">時間倒轉 ×0</span>
+      </span>
+      <button id="btn-new">新對局</button>
+      <button id="btn-undo">悔棋</button>
+      <button id="btn-rank">排行榜</button>
+    </div>
+  </header>
+
+  <main id="stage">
+    <svg id="scene" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid slice">
+      <defs>
+        <radialGradient id="g-black" cx="35%" cy="30%" r="80%">
+          <stop offset="0%" stop-color="#6a6a72"/>
+          <stop offset="45%" stop-color="#26262c"/>
+          <stop offset="100%" stop-color="#050507"/>
+        </radialGradient>
+        <radialGradient id="g-white" cx="35%" cy="30%" r="80%">
+          <stop offset="0%" stop-color="#ffffff"/>
+          <stop offset="55%" stop-color="#e8e6df"/>
+          <stop offset="100%" stop-color="#b5b0a3"/>
+        </radialGradient>
+        <linearGradient id="g-sky" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#1b2a4a"/>
+          <stop offset="60%" stop-color="#3d5578"/>
+          <stop offset="100%" stop-color="#8a9bb5"/>
+        </linearGradient>
+        <linearGradient id="g-floor" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#4a3a2c"/>
+          <stop offset="100%" stop-color="#241c14"/>
+        </linearGradient>
+        <radialGradient id="g-lantern" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="#ffe4b0"/>
+          <stop offset="35%" stop-color="#ffb35c" stop-opacity=".8"/>
+          <stop offset="100%" stop-color="#ff8830" stop-opacity="0"/>
+        </radialGradient>
+      </defs>
+      <g id="layer-bg"></g>
+      <g id="layer-board"></g>
+      <g id="layer-stones"></g>
+      <g id="layer-fx"></g>
+    </svg>
+    <div id="hint">拖曳環顧四周 · 滾輪/雙指縮放 · 點擊交叉點落子</div>
+    <div id="intro-title">
+      <span>3D 五子棋</span>
+      <small>輕觸跳過</small>
+    </div>
+  </main>
+
+  <!-- 開局設定 -->
+  <div class="modal" id="modal-setup">
+    <div class="panel">
+      <h2>開始對局</h2>
+      <div class="field">
+        <span class="label">模式</span>
+        <div class="seg" id="seg-mode">
+          <button data-mode="pvp" class="on">雙人對戰</button>
+          <button data-mode="ai">與電腦對戰</button>
+          <button data-mode="auto">電腦對電腦</button>
+        </div>
+        <p id="auto-desc" style="display:none">觀戰模式：黑棋是大哥。大哥，沒有不能輸的棋局。</p>
+      </div>
+      <div class="field" id="field-side">
+        <span class="label">你執</span>
+        <div class="seg" id="seg-side">
+          <button data-side="1" class="on">黑棋（先手）</button>
+          <button data-side="2">白棋（後手）</button>
+        </div>
+      </div>
+      <button class="primary" id="btn-start">開始</button>
+    </div>
+  </div>
+
+  <!-- 勝利 + 簽名 -->
+  <div class="modal" id="modal-win">
+    <div class="panel">
+      <h2 id="win-title">黑棋獲勝！</h2>
+      <p id="win-detail"></p>
+      <div class="field">
+        <span class="label">名字</span>
+        <input id="win-name" type="text" maxlength="12" placeholder="留名排行榜">
+      </div>
+      <div class="field">
+        <span class="label">親筆簽名</span>
+        <svg id="sig-pad" viewBox="0 0 300 100"></svg>
+        <button class="mini" id="sig-clear">清除簽名</button>
+      </div>
+      <div class="row">
+        <button id="btn-skip">跳過</button>
+        <button class="primary" id="btn-save">簽名上榜</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 時間倒轉閃光 -->
+  <div id="flash"></div>
+
+  <!-- 致敬字幕 -->
+  <div id="meme">
+    <div class="meme-inner">
+      <div class="meme-line1">大哥沒有輸！</div>
+      <div class="meme-line2">逃跑的是你！</div>
+      <div class="meme-sub" id="meme-sub">時間倒轉 ×3 · 判定：逃跑者失格 · 戰績：大哥不敗</div>
+      <div class="row" style="justify-content:center">
+        <button id="meme-close">關閉</button>
+        <button class="primary" id="meme-again">再看一場</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 排行榜 -->
+  <div class="modal" id="modal-rank">
+    <div class="panel wide">
+      <h2>排行榜</h2>
+      <div id="rank-list"></div>
+      <div class="row">
+        <button id="btn-rank-clear">清空紀錄</button>
+        <button class="primary" id="btn-rank-close">關閉</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script src="engine.js?v=2"></script>
+<script src="main.js?v=2"></script>
+</body>
+</html>

@@ -1,0 +1,234 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body, #app {
+  height: 100%;
+  overflow: hidden;
+  font-family: "Noto Sans TC", "Microsoft JhengHei", system-ui, sans-serif;
+  background: #10141c;
+  color: #e8e6df;
+  touch-action: none;
+}
+
+#app { display: flex; flex-direction: column; }
+
+#topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  background: rgba(12, 15, 22, .92);
+  border-bottom: 1px solid #2a3245;
+  z-index: 5;
+  flex-wrap: wrap;
+}
+
+#topbar h1 { font-size: 18px; letter-spacing: 2px; color: #d9b878; }
+
+#status {
+  flex: 1;
+  font-size: 15px;
+  min-width: 120px;
+}
+
+#controls { display: flex; gap: 8px; }
+
+button {
+  font: inherit;
+  color: #e8e6df;
+  background: #232b3d;
+  border: 1px solid #3a4560;
+  border-radius: 8px;
+  padding: 6px 14px;
+  cursor: pointer;
+  transition: background .15s;
+}
+button:hover { background: #2e3a55; }
+button:disabled { opacity: .4; cursor: default; }
+button.primary { background: #b8873a; border-color: #d9b878; color: #16120a; font-weight: 700; }
+button.primary:hover { background: #d9a44a; }
+button.mini { padding: 2px 10px; font-size: 12px; align-self: flex-start; }
+
+#stage { position: relative; flex: 1; }
+
+#scene { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; }
+#scene.dragging { cursor: grabbing; }
+
+#hint {
+  position: absolute;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 12px;
+  color: rgba(232, 230, 223, .55);
+  background: rgba(12, 15, 22, .55);
+  padding: 4px 12px;
+  border-radius: 12px;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+/* modal */
+.modal {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(5, 7, 12, .6);
+  backdrop-filter: blur(3px);
+  z-index: 10;
+  padding: 16px;
+}
+.modal.show { display: flex; }
+
+.panel {
+  width: min(92vw, 360px);
+  max-height: 86vh;
+  overflow-y: auto;
+  background: #171d2b;
+  border: 1px solid #3a4560;
+  border-radius: 14px;
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, .55);
+}
+.panel.wide { width: min(94vw, 520px); }
+.panel h2 { font-size: 20px; color: #d9b878; }
+.panel p { font-size: 14px; color: #b9c0d0; }
+
+.field { display: flex; flex-direction: column; gap: 8px; }
+.field .label { font-size: 13px; color: #8f9ab3; }
+
+.seg { display: flex; gap: 8px; }
+.seg button { flex: 1; }
+.seg button.on { background: #b8873a; border-color: #d9b878; color: #16120a; font-weight: 700; }
+
+input[type=text] {
+  font: inherit;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid #3a4560;
+  background: #10141c;
+  color: #e8e6df;
+  outline: none;
+}
+input[type=text]:focus { border-color: #d9b878; }
+
+#sig-pad {
+  width: 100%;
+  height: 100px;
+  background: #f5f1e6;
+  border-radius: 8px;
+  touch-action: none;
+  cursor: crosshair;
+}
+
+.row { display: flex; gap: 10px; justify-content: flex-end; }
+
+/* 排行榜 */
+#rank-list { display: flex; flex-direction: column; gap: 8px; max-height: 52vh; overflow-y: auto; }
+.rank-item {
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  gap: 4px 10px;
+  align-items: center;
+  background: #10141c;
+  border: 1px solid #2a3245;
+  border-radius: 10px;
+  padding: 8px 12px;
+}
+.rank-item .no { font-size: 16px; font-weight: 700; color: #d9b878; }
+.rank-item .who { font-size: 15px; }
+.rank-item .meta { grid-column: 2 / 4; font-size: 12px; color: #8f9ab3; }
+.rank-item svg { width: 96px; height: 32px; background: #f5f1e6; border-radius: 6px; }
+.rank-empty { text-align: center; color: #8f9ab3; padding: 24px 0; }
+
+/* 觀戰控制 */
+#auto-ctrl { display: none; align-items: center; gap: 8px; }
+#auto-ctrl.show { display: inline-flex; }
+#rewind-badge {
+  font-size: 12px;
+  color: #ffd166;
+  background: rgba(255, 209, 102, .12);
+  border: 1px solid rgba(255, 209, 102, .4);
+  border-radius: 10px;
+  padding: 3px 10px;
+  white-space: nowrap;
+}
+
+/* 時間倒轉閃光 */
+#flash {
+  position: fixed;
+  inset: 0;
+  background: #fff;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .18s;
+  z-index: 20;
+}
+#flash.on { opacity: .9; }
+
+/* 致敬字幕 */
+#meme {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 15;
+  background: rgba(5, 7, 12, .35);
+}
+#meme.show { display: flex; }
+.meme-inner { text-align: center; display: flex; flex-direction: column; gap: 14px; padding: 16px; }
+.meme-line1 {
+  font-size: clamp(40px, 9vw, 84px);
+  font-weight: 900;
+  letter-spacing: 6px;
+  color: #ffd166;
+  text-shadow: 0 0 24px rgba(255, 140, 40, .9), 0 4px 10px rgba(0, 0, 0, .8);
+  animation: meme-pop .5s cubic-bezier(.2, 1.6, .4, 1) both;
+}
+.meme-line2 {
+  font-size: clamp(22px, 4.5vw, 40px);
+  font-weight: 700;
+  letter-spacing: 4px;
+  color: #fff;
+  text-shadow: 0 3px 8px rgba(0, 0, 0, .8);
+  animation: meme-pop .5s .35s cubic-bezier(.2, 1.6, .4, 1) both;
+}
+.meme-sub { font-size: 14px; color: #e8e6df; opacity: .85; animation: meme-fade .6s .8s both; }
+#meme .row { animation: meme-fade .6s 1.2s both; }
+@keyframes meme-pop { from { opacity: 0; transform: scale(2.2); } to { opacity: 1; transform: scale(1); } }
+@keyframes meme-fade { from { opacity: 0; } to { opacity: 1; } }
+
+/* 開場動畫標題 */
+#intro-title {
+  position: absolute;
+  inset: 0;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  pointer-events: none;
+  text-align: center;
+}
+#intro-title.show { display: flex; }
+#intro-title span {
+  font-size: clamp(36px, 8vw, 72px);
+  font-weight: 900;
+  letter-spacing: 14px;
+  color: #e8e6df;
+  text-shadow: 0 0 30px rgba(255, 160, 60, .55), 0 4px 12px rgba(0, 0, 0, .9);
+  animation: intro-in 2.2s .8s both;
+}
+#intro-title small { font-size: 13px; color: rgba(232, 230, 223, .6); animation: meme-fade 1s 1.6s both; }
+@keyframes intro-in { from { opacity: 0; letter-spacing: 34px; } to { opacity: 1; letter-spacing: 14px; } }
+
+@media (max-width: 480px) {
+  #topbar h1 { font-size: 15px; letter-spacing: 1px; }
+  #controls button { padding: 5px 10px; font-size: 13px; }
+  #hint { font-size: 11px; }
+}
