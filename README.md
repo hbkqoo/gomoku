@@ -50,7 +50,7 @@ python -m http.server 8000
 4. **盤面評估** — 滑動五格窗：任一五格窗內只有單方棋子時依子數計分 `[0, 2, 40, 800, 20000, 10000000]`，開放棋形自然落在多個乾淨窗內而累積高分；對手同級威脅加權 ×1.15
 5. `opts.depth` 可調搜尋深度（`0` = 原作的單手啟發式）；`opts.jitter`/`opts.pool` 提供隨機性（觀戰模式用）
 
-實測（`tests/engine.test.js`）：搜尋版對原作啟發式（加隨機擾動）20 局 16 勝 0 敗 4 和，中盤單手思考最長約 0.5 秒。
+強度基準（`node tests/benchmark.js`，seeded 可重現）：搜尋版對原作啟發式（加隨機擾動）20 局 16 勝 0 敗 4 和，深度版單手思考最長約 0.5 秒。
 
 ## 測試
 
@@ -77,6 +77,7 @@ E.aiMove(g); // => { x, y }
 ├── engine.js           # 遊戲引擎：棋盤狀態、勝負判定、悔棋、AI（UMD，可供 Node 測試）
 ├── main.js             # 3D 投影、SVG 渲染、視角操作、簽名板、排行榜
 ├── tests/engine.test.js # 引擎單元測試（24 項）
+├── tests/benchmark.js  # AI 強度基準測試（20 局 seeded 對弈）
 └── favicon.svg         # 網站圖示
 ```
 
