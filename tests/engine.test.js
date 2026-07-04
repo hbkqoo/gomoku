@@ -235,6 +235,29 @@ console.log('分析工具');
   assert(E.forcedLoss(g, 3) === true, 'forcedLoss：對方活四 → 必敗');
 }
 
+/* ---- 分析：analyzeMoves（熱力圖） ---- */
+
+console.log('analyzeMoves 熱力圖評分');
+{
+  const g = E.createGame();
+  for (const [x, y] of [[4, 7], [0, 0], [5, 7], [0, 1], [6, 7], [0, 2]]) E.place(g, x, y);
+  const all = E.analyzeMoves(g);
+  assert(all.length > 0, '回傳候選點');
+  assert(all.every((m) => g.board[m.y][m.x] === E.EMPTY), '所有點為空點');
+  assert(all.every((m) => m.norm >= 0 && m.norm <= 1), 'norm 落在 0~1');
+  // 已排序：分數遞減
+  let sorted = true;
+  for (let i = 1; i < all.length; i++) if (all[i].score > all[i - 1].score) sorted = false;
+  assert(sorted, '依分數由高到低排序');
+  assert(all[0].norm === 1, '最高分 norm 為 1');
+  // 黑活三的延伸點（3,7)/(7,7）應在最前面
+  const top3 = all.slice(0, 4).map((m) => m.x + ',' + m.y);
+  assert(top3.includes('3,7') || top3.includes('7,7'), '活三延伸點名列前茅（' + top3.join(' ') + '）');
+  // top 限制
+  const t5 = E.analyzeMoves(g, { top: 5 });
+  assert(t5.length === 5, 'top 參數限制回傳數量');
+}
+
 /* ---- AI：速度 ---- */
 
 console.log('AI 速度');

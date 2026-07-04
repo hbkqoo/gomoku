@@ -74,6 +74,18 @@
 
   const gx2w = (g) => g - HALF; // 格點 → 世界
 
+  // 熱力圖配色：norm 0→1 映射為 藍→青→綠→黃→紅
+  const HEAT_STOPS = [
+    [40, 90, 200], [40, 180, 200], [60, 200, 90], [240, 200, 40], [230, 60, 50],
+  ];
+  function heatColor(t) {
+    const c = Math.max(0, Math.min(1, t)) * (HEAT_STOPS.length - 1);
+    const i = Math.min(HEAT_STOPS.length - 2, Math.floor(c));
+    const f = c - i, a = HEAT_STOPS[i], b = HEAT_STOPS[i + 1];
+    const ch = (k) => Math.round(a[k] + (b[k] - a[k]) * f);
+    return `rgb(${ch(0)},${ch(1)},${ch(2)})`;
+  }
+
   /* ---------- 遊戲狀態 ---------- */
   let game = E.createGame();
   let mode = 'pvp';       // 'pvp' | 'ai' | 'auto' | 'lesson'
@@ -88,8 +100,10 @@
   let hoverCell = null;
   let recorded = false;   // 本局已寫入排行榜
   let coachOn = false;    // 教練模式：即時威脅高亮
+  let heatOn = false;     // AI 思考熱力圖
   let hintCell = null;    // 「提示」按鈕的建議點
   const coachCache = { key: '', list: [] };
+  const heatCache = { key: '', list: [] };
   const replay = { active: false, index: 0, board: null }; // 棋譜回放
   const lessonState = { active: null, idx: -1, moves: 0, busyAI: false };
   const lessons = typeof GomokuLessons !== 'undefined' ? GomokuLessons : [];
@@ -332,6 +346,36 @@
       }
     }
 
+    /* AI 思考熱力圖：候選點依評分上色（藍→青→黃→紅），最佳點加白環 */
+    const heatVisible = heatOn && !replay.active && !intro.active && mode !== 'auto' &&
+      !game.winner && !busy && !lessonState.busyAI &&
+      (mode !== 'ai' || game.current !== aiSide);
+    if (heatVisible) {
+      const key = 'h:' + mode + ':' + game.moves.length + ':' + game.current;
+      if (heatCache.key !== key) {
+        heatCache.key = key;
+        heatCache.list = E.analyzeMoves(game, { top: 30 });
+      }
+      const list = heatCache.list;
+      // 依深度排序（遠先畫），近的蓋在上面
+      const drawn = list
+        .map((m) => ({ m, p: project(gx2w(m.x), 0.03, gx2w(m.y)) }))
+        .filter((o) => o.p)
+        .sort((a, b2) => b2.p.d - a.p.d);
+      for (const { m, p } of drawn) {
+        const r = F * 0.4 / p.d;
+        fx += `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${r.toFixed(1)}" fill="${heatColor(m.norm)}" opacity="${(0.22 + 0.5 * m.norm).toFixed(2)}"/>`;
+      }
+      if (list.length) {
+        const best = list[0]; // analyzeMoves 已依分數排序，第一個是 AI 首選
+        const bp = project(gx2w(best.x), 0.04, gx2w(best.y));
+        if (bp) {
+          const r = F * 0.42 / bp.d;
+          fx += `<circle cx="${bp.x.toFixed(1)}" cy="${bp.y.toFixed(1)}" r="${r.toFixed(1)}" fill="none" stroke="#fff" stroke-width="2.6"/>`;
+        }
+      }
+    }
+
     /* 「提示」建議點：金色雙環 */
     if (hintCell && !replay.active && !game.winner) {
       const p = project(gx2w(hintCell.x), 0.03, gx2w(hintCell.y));
@@ -388,6 +432,7 @@
     document.getElementById('replay-ctrl').classList.toggle('show', replay.active);
     document.getElementById('btn-hint').style.display = (coachOn || mode === 'lesson') ? '' : 'none';
     document.getElementById('btn-coach').classList.toggle('on', coachOn);
+    document.getElementById('btn-heat').classList.toggle('on', heatOn);
     document.getElementById('btn-sound').textContent = sound.enabled ? '🔊' : '🔇';
   }
 
@@ -977,6 +1022,13 @@
     updateTopbar();
     render();
     if (coachOn) setStatus('教練模式開啟：棋盤標出雙方威脅點');
+  });
+  document.getElementById('btn-heat').addEventListener('click', () => {
+    heatOn = !heatOn;
+    heatCache.key = '';
+    updateTopbar();
+    render();
+    if (heatOn) setStatus('AI 熱力圖：顏色越紅代表 AI 越想下該點（白環為首選）');
   });
   document.getElementById('btn-hint').addEventListener('click', () => {
     if (game.winner || busy || replay.active || intro.active || lessonState.busyAI) return;

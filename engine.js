@@ -390,9 +390,29 @@
     return out;
   }
 
+  // AI 思考視覺化：回傳目前輪到方的候選點評分，供熱力圖顯示。
+  // 每點 { x, y, attack, defend, score, norm }，norm 為 0~1 相對強度（最高分為 1）。
+  // 依 score 由高到低排序；opts.top 限制回傳數量（預設全部）。
+  function analyzeMoves(game, opts) {
+    const o = opts || {};
+    const me = game.current;
+    const renju = !!game.renju;
+    let scored = rankedMoves(game.board, me, renju);
+    if (o.top) scored = scored.slice(0, o.top);
+    if (!scored.length) return [];
+    // 以 log 壓縮動態範圍（分數跨好幾個數量級），讓熱力圖的中低分也看得出差異
+    const logs = scored.map((s) => Math.log10(Math.max(1, s.score)));
+    const lo = Math.min(...logs), hi = Math.max(...logs);
+    const span = hi - lo || 1;
+    return scored.map((s, i) => ({
+      x: s.x, y: s.y, attack: s.attack, defend: s.defend, score: s.score,
+      norm: (logs[i] - lo) / span,
+    }));
+  }
+
   return {
     SIZE, EMPTY, BLACK, WHITE, AI_LEVELS,
     createGame, place, undo, aiMove, findWinLine,
-    forbiddenReason, forcedWin, forcedLoss, hints,
+    forbiddenReason, forcedWin, forcedLoss, hints, analyzeMoves,
   };
 });
