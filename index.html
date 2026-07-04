@@ -6,7 +6,7 @@
 <title>3D 五子棋 — 第一人稱對弈</title>
 <meta name="theme-color" content="#10141c">
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
-<link rel="stylesheet" href="style.css?v=6">
+<link rel="stylesheet" href="style.css?v=7">
 </head>
 <body>
 <div id="app">
@@ -157,9 +157,16 @@
   <!-- 教學關卡列表 -->
   <div class="modal" id="modal-lessons">
     <div class="panel wide">
-      <h2>教學：必勝棋法</h2>
-      <p>從殘局中找出致勝下法。下對了對手會全力防守，下錯了會退回讓你重試，卡關可按「提示」。</p>
-      <div id="lesson-list"></div>
+      <h2>五子棋教學</h2>
+      <div class="teach-tabs">
+        <button class="teach-tab on" data-tab="tips">新手技巧</button>
+        <button class="teach-tab" data-tab="drill">動手練習</button>
+      </div>
+      <div id="tips-pane"></div>
+      <div id="drill-pane" style="display:none">
+        <p class="hint-text">從殘局中找出致勝下法。下對了對手會全力防守，下錯了會退回讓你重試，卡關可按「提示」。</p>
+        <div id="lesson-list"></div>
+      </div>
       <div class="row">
         <button class="primary" id="btn-lessons-close">關閉</button>
       </div>
@@ -228,10 +235,10 @@
     </div>
   </div>
 </div>
-<script src="engine.js?v=6"></script>
-<script src="lessons.js?v=6"></script>
-<script src="openings.js?v=6"></script>
-<script src="puzzles.js?v=6"></script>
-<script src="main.js?v=6"></script>
+<script src="engine.js?v=7"></script>
+<script src="lessons.js?v=7"></script>
+<script src="openings.js?v=7"></script>
+<script src="puzzles.js?v=7"></script>
+<script src="main.js?v=7"></script>
 </body>
 </html>

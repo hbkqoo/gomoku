@@ -1068,9 +1068,31 @@
         <button class="lesson-item${done.has(L.id) ? ' done' : ''}" data-i="${i}">
           <span class="lt">${done.has(L.id) ? '✓ ' : ''}${escapeHtml(L.subtitle)}｜${escapeHtml(L.title)}</span>
           <span class="ld">${escapeHtml(L.desc)}</span>
+          ${L.tip ? `<span class="ltip">${escapeHtml(L.tip)}</span>` : ''}
         </button>`)
       .join('');
   }
+
+  function renderTips() {
+    const tips = lessons.tips || [];
+    document.getElementById('tips-pane').innerHTML =
+      '<p class="hint-text">看懂這幾招，新手也能贏。想動手練就切到「動手練習」。</p>' +
+      tips.map((t, i) => `
+        <div class="tip-card">
+          <span class="tip-no">${i + 1}</span>
+          <div><span class="tip-h">${escapeHtml(t.h)}</span><span class="tip-b">${escapeHtml(t.b)}</span></div>
+        </div>`).join('');
+  }
+
+  function switchTeachTab(tab) {
+    document.querySelectorAll('.teach-tab').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
+    document.getElementById('tips-pane').style.display = tab === 'tips' ? '' : 'none';
+    document.getElementById('drill-pane').style.display = tab === 'drill' ? '' : 'none';
+  }
+  document.querySelector('.teach-tabs').addEventListener('click', (e) => {
+    const b = e.target.closest('.teach-tab');
+    if (b) switchTeachTab(b.dataset.tab);
+  });
 
   function lessonStatus() {
     const L = lessonState.active;
@@ -1173,7 +1195,9 @@
   }
 
   document.getElementById('btn-lessons').addEventListener('click', () => {
+    renderTips();
     renderLessonList();
+    switchTeachTab('tips');
     openModal('modal-lessons');
   });
   document.getElementById('btn-lessons-close').addEventListener('click', () => closeModal('modal-lessons'));

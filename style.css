@@ -193,6 +193,26 @@ input[type=text]:focus { border-color: #d9b878; }
 .lesson-item .ld { font-size: 12.5px; color: #8f9ab3; line-height: 1.5; }
 .lesson-item.done { border-color: #b8873a; }
 .lesson-item.done .lt { color: #d9b878; }
+.lesson-item .ltip { font-size: 12.5px; color: #d9b878; }
+
+/* 教學分頁 */
+.teach-tabs { display: flex; gap: 8px; }
+.teach-tab { flex: 1; }
+.teach-tab.on { background: #b8873a; border-color: #d9b878; color: #16120a; font-weight: 700; }
+
+/* 新手技巧小抄 */
+#tips-pane { display: flex; flex-direction: column; gap: 8px; max-height: 56vh; overflow-y: auto; }
+.tip-card {
+  display: flex; gap: 12px; align-items: flex-start;
+  padding: 10px 14px; background: #10141c; border: 1px solid #2a3245; border-radius: 10px;
+}
+.tip-no {
+  flex: 0 0 26px; height: 26px; border-radius: 50%;
+  background: #b8873a; color: #16120a; font-weight: 700;
+  display: flex; align-items: center; justify-content: center; font-size: 14px;
+}
+.tip-h { display: block; font-size: 15px; font-weight: 700; color: #e8e6df; margin-bottom: 3px; }
+.tip-b { display: block; font-size: 13px; color: #b9c0d0; line-height: 1.6; }
 
 /* 開局定式圖鑑 */
 .openings-body { display: flex; gap: 14px; max-height: 60vh; }
