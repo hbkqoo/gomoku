@@ -730,9 +730,10 @@
     if (!intro.active) return;
     const t = Math.min(1, (now - intro.t0) / 6000);
     const e = easeIO(t);
-    cam.dist = 46 - (46 - 13.5) * e;
-    cam.pitch = 1.2 - (1.2 - 0.52) * e;
-    cam.yaw = (1 - e) * Math.PI * 2.5;
+    // 只做平順的俯衝入座，不旋轉（避免暈眩）；yaw 固定、僅極輕微收斂
+    cam.dist = 40 - (40 - 13.5) * e;
+    cam.pitch = 1.05 - (1.05 - 0.52) * e;
+    cam.yaw = (1 - e) * 0.12;
     render();
     if (t >= 1) endIntro();
     else requestAnimationFrame(introFrame);
@@ -992,7 +993,15 @@
     humanSide = +btn.dataset.side;
     aiSide = humanSide === E.BLACK ? E.WHITE : E.BLACK;
   });
-  segInit('seg-level', (btn) => { aiLevel = btn.dataset.level; });
+  const LEVEL_DESC = {
+    easy: '入門：新手級。偏重自己進攻、幾乎不防守，用「活三做活四」就能贏它。',
+    medium: '進階：會擋你的活三、往後算一回合，一般玩家的對手。',
+    hard: '困難：往後算兩三回合，看得到雙威脅組合、會設陷阱。',
+    master: '大師：更深更廣的搜尋（每手最多約 0.4 秒），全力求勝。',
+  };
+  const setLevelDesc = () => { document.getElementById('level-desc').textContent = LEVEL_DESC[aiLevel] || ''; };
+  segInit('seg-level', (btn) => { aiLevel = btn.dataset.level; setLevelDesc(); });
+  setLevelDesc();
   document.getElementById('field-side').style.display = 'none';
   document.getElementById('field-level').style.display = 'none';
 

@@ -255,17 +255,17 @@
   }
 
   // negamax + alpha-beta。回傳 player 視角的分數；越快達成的勝利分數越高（偏好速勝）。
-  // stat.deadline（可選）：超過時標記 stat.aborted，結果不可信、由呼叫端丟棄
-  function negamax(board, depth, alpha, beta, player, renju, stat) {
+  // branch：每層展開的候選數；stat.deadline（可選）：超過時標記 aborted，結果丟棄
+  function negamax(board, depth, alpha, beta, player, renju, branch, stat) {
     if (stat.deadline && Date.now() > stat.deadline) { stat.aborted = true; return 0; }
     if (depth === 0) return evaluateBoard(board, player);
-    const moves = rankedMoves(board, player, renju).slice(0, BRANCH);
+    const moves = rankedMoves(board, player, renju).slice(0, branch);
     if (!moves.length) return 0; // 滿盤和局（或黑棋全為禁手點＝無路可走）
     let best = -Infinity;
     for (const mv of moves) {
       if (mv.attack >= 10000000) return WIN_SCORE + depth; // 這手直接連五
       board[mv.y][mv.x] = player;
-      const val = -negamax(board, depth - 1, -beta, -alpha, player === BLACK ? WHITE : BLACK, renju, stat);
+      const val = -negamax(board, depth - 1, -beta, -alpha, player === BLACK ? WHITE : BLACK, renju, branch, stat);
       board[mv.y][mv.x] = EMPTY;
       if (stat.aborted) return 0;
       if (val > best) best = val;
@@ -276,7 +276,8 @@
   }
 
   // 根節點搜尋：回傳 { move, value, aborted }
-  function searchRoot(board, me, depth, renju, deadline) {
+  function searchRoot(board, me, depth, renju, branch, deadline) {
+    const br = branch || BRANCH;
     const scored = rankedMoves(board, me, renju);
     const best = scored[0];
     if (!best) return { move: null, value: 0, aborted: false };
@@ -284,9 +285,9 @@
     const foe = me === BLACK ? WHITE : BLACK;
     const stat = { deadline: deadline || 0, aborted: false };
     let bestMv = best, bestVal = -Infinity, alpha = -Infinity;
-    for (const mv of scored.slice(0, BRANCH)) {
+    for (const mv of scored.slice(0, br)) {
       board[mv.y][mv.x] = me;
-      const val = -negamax(board, depth - 1, -Infinity, -alpha, foe, renju, stat);
+      const val = -negamax(board, depth - 1, -Infinity, -alpha, foe, renju, br, stat);
       board[mv.y][mv.x] = EMPTY;
       if (stat.aborted) break;
       if (val > bestVal) { bestVal = val; bestMv = mv; }
@@ -295,13 +296,35 @@
     return { move: bestMv, value: bestVal, aborted: stat.aborted };
   }
 
-  // 難度預設：aiMove 的 opts.level 可用鍵。master 用時間預算迭代加深。
+  // 難度預設：depth（搜尋層數）與 branch（每層展開候選數）逐級遞增，強度明顯分開。
+  // easy 完全不搜尋（新手級 easyMove）；master 加時間預算上限避免過慢。
   const AI_LEVELS = {
-    easy: { depth: 0, jitter: 0.7, pool: 4 },
-    medium: { depth: 2 },
-    hard: { depth: SEARCH_DEPTH },
-    master: { timeBudget: 1500, maxDepth: 10 },
+    easy: { depth: 0, easy: true },              // 新手：只擋立即連五、偏重自攻
+    medium: { depth: 2, branch: 8 },             // 進階：會擋活三、算一回合
+    hard: { depth: 4, branch: 10 },              // 困難：看得到雙威脅組合
+    master: { depth: 6, branch: 14, timeBudget: 3000 }, // 大師：更深更廣
   };
+
+  // 入門（新手）走法：刻意弱化，讓剛學會的人也贏得了。
+  // 保證：(1) 能連五就贏 (2) 對手下一手就能連五（活四/沖四）才擋；
+  // 其餘偏重「自己進攻」、幾乎不看防守（不會主動擋你的活三）→ 用活三做活四就能擊敗它。
+  function easyMove(scored, rng) {
+    const best = scored[0];
+    if (best.attack >= 10000000) return { x: best.x, y: best.y }; // 能贏就贏
+    const block = scored.find((s) => s.defend >= 10000000);
+    if (block) return { x: block.x, y: block.y };                 // 對手立即連五才擋
+    // 進攻導向的加權隨機：自己的棋形分量重、對手威脅只給 3%（連活三都懶得擋），
+    // 在前 12 名裡挑。立即連五已在上面強制擋掉，所以不會蠢到讓對手一手贏。
+    const pool = scored
+      .map((s) => ({ x: s.x, y: s.y, w: s.attack + s.defend * 0.03 + 1 }))
+      .sort((a, b) => b.w - a.w)
+      .slice(0, 12);
+    let total = 0;
+    for (const c of pool) total += c.w;
+    let r = rng() * total;
+    for (const c of pool) { r -= c.w; if (r <= 0) return { x: c.x, y: c.y }; }
+    return { x: pool[0].x, y: pool[0].y };
+  }
 
   // opts.level: 'easy'|'medium'|'hard'|'master'（difficulty 預設，個別欄位可再覆寫）
   // opts.jitter: 0~1 隨機程度；opts.pool: 隨機時的候選數；opts.rng: 隨機來源（測試用）
@@ -320,7 +343,9 @@
     const best = scored[0];
     if (!best) return null;
     if (best.attack >= 10000000) return { x: best.x, y: best.y }; // 直接獲勝
-    // 隨機模式（觀戰／入門用）：單手啟發式；攸關勝負的一手（擋四以上）不受隨機影響
+    // 入門（新手）級：刻意弱化的走法
+    if (o.easy) return easyMove(scored, rng);
+    // 隨機模式（觀戰用）：單手啟發式；攸關勝負的一手（擋四以上）不受隨機影響
     if (jitter > 0) {
       if (best.score >= 90000) return { x: best.x, y: best.y };
       const floor = best.score * (1 - 0.3 * jitter);
@@ -330,22 +355,22 @@
     }
     // 對手下一手就能連五 → 只有這一擋，不必搜尋
     if (best.defend >= 10000000) return { x: best.x, y: best.y };
+    const branch = o.branch || BRANCH;
+    const depth = o.depth === undefined ? SEARCH_DEPTH : o.depth;
+    if (depth <= 0) return { x: best.x, y: best.y };
     if (o.timeBudget) {
-      // 迭代加深：時間用完就採用最後一個完整深度的結果
+      // 迭代加深至 depth，時間用完就採用最後一個完成深度的結果
       let mv = { x: best.x, y: best.y };
       const deadline = Date.now() + o.timeBudget;
-      const maxD = o.maxDepth || 10;
-      for (let d = 2; d <= maxD; d += 2) {
-        const res = searchRoot(board, me, d, renju, deadline);
+      for (let d = 2; d <= depth; d += 2) {
+        const res = searchRoot(board, me, d, renju, branch, deadline);
         if (res.aborted) break;
         if (res.move) mv = { x: res.move.x, y: res.move.y };
         if (res.value >= WIN_SCORE) break; // 已找到必勝路線
       }
       return mv;
     }
-    const depth = o.depth === undefined ? SEARCH_DEPTH : o.depth;
-    if (depth <= 0) return { x: best.x, y: best.y };
-    const res = searchRoot(board, me, depth, renju, 0);
+    const res = searchRoot(board, me, depth, renju, branch, 0);
     return res.move ? { x: res.move.x, y: res.move.y } : { x: best.x, y: best.y };
   }
 
@@ -353,13 +378,13 @@
 
   // 目前輪到的一方在 depth 層內是否有必勝路線
   function forcedWin(game, depth) {
-    const res = searchRoot(game.board, game.current, depth || SEARCH_DEPTH, !!game.renju, 0);
+    const res = searchRoot(game.board, game.current, depth || SEARCH_DEPTH, !!game.renju, BRANCH, 0);
     return res.value >= WIN_SCORE;
   }
 
   // 目前輪到的一方在 depth 層內是否無論如何都輸（對手必勝）
   function forcedLoss(game, depth) {
-    const res = searchRoot(game.board, game.current, depth || SEARCH_DEPTH, !!game.renju, 0);
+    const res = searchRoot(game.board, game.current, depth || SEARCH_DEPTH, !!game.renju, BRANCH, 0);
     return res.value <= -WIN_SCORE;
   }
 
