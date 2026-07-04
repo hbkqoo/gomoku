@@ -1316,6 +1316,112 @@
     else startPractice(kind);
   });
 
+  /* ---------- 開局定式圖鑑 ---------- */
+  const openings = typeof GomokuOpenings !== 'undefined' ? GomokuOpenings : [];
+  let openingSel = 0;
+
+  function renderOpeningList() {
+    const groups = [['direct', '直接型（白 2 下在正上方）'], ['indirect', '間接型（白 2 下在右上斜角）']];
+    let html = '';
+    for (const [type, label] of groups) {
+      html += `<div class="op-group">${label}</div>`;
+      openings.forEach((o, i) => {
+        if (o.type !== type) return;
+        html += `<button class="op-item${i === openingSel ? ' on' : ''}" data-i="${i}">` +
+          `<span class="op-name">${o.star ? '★ ' : ''}${escapeHtml(o.name)}</span>` +
+          `<span class="op-ev ${evClass(o.ev)}">${escapeHtml(o.ev)}</span></button>`;
+      });
+    }
+    document.getElementById('opening-list').innerHTML = html;
+  }
+
+  function evClass(ev) {
+    if (ev.indexOf('黑必勝') === 0) return 'ev-bw';
+    if (ev.indexOf('白必勝') === 0) return 'ev-ww';
+    if (ev.indexOf('黑') === 0) return 'ev-b';
+    if (ev.indexOf('白') === 0) return 'ev-w';
+    return 'ev-even';
+  }
+
+  // 小型 2D 棋形預覽（中心 ±3 = 7×7 區域，標示手數）
+  function openingBoardSvg(o) {
+    const R = 3, N = 2 * R + 1, CELL = 42, PAD = 24;
+    const sz = PAD * 2 + (N - 1) * CELL;
+    const gx = (dx) => PAD + (dx + R) * CELL;
+    let s = `<svg viewBox="0 0 ${sz} ${sz}" class="op-board">`;
+    s += `<rect x="0" y="0" width="${sz}" height="${sz}" rx="8" fill="#c9963f"/>`;
+    for (let i = 0; i < N; i++) {
+      const p = PAD + i * CELL;
+      s += `<line x1="${PAD}" y1="${p}" x2="${sz - PAD}" y2="${p}" stroke="#5a3d1a" stroke-width="1.2"/>`;
+      s += `<line x1="${p}" y1="${PAD}" x2="${p}" y2="${sz - PAD}" stroke="#5a3d1a" stroke-width="1.2"/>`;
+    }
+    s += `<circle cx="${gx(0)}" cy="${gx(0)}" r="3.5" fill="#5a3d1a"/>`; // 天元星位
+    o.moves.forEach((m, idx) => {
+      const isBlack = idx % 2 === 0;
+      const cx = gx(m[0]), cy = gx(m[1]);
+      s += `<circle cx="${cx}" cy="${cy}" r="${CELL * 0.42}" fill="url(#g-${isBlack ? 'black' : 'white'})" stroke="#0006" stroke-width="1"/>`;
+      s += `<text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="central" font-size="17" font-weight="700" fill="${isBlack ? '#fff' : '#111'}">${idx + 1}</text>`;
+    });
+    s += '</svg>';
+    return s;
+  }
+
+  function renderOpeningDetail() {
+    const o = openings[openingSel];
+    if (!o) return;
+    const el = document.getElementById('opening-detail');
+    el.innerHTML =
+      openingBoardSvg(o) +
+      `<div class="op-info">` +
+      `<h3>${escapeHtml(o.name)} <small>${escapeHtml(o.jp)}</small></h3>` +
+      `<div class="op-tags"><span class="op-tag">${o.typeLabel}型 第 ${o.no} 號</span>` +
+      `<span class="op-tag ${evClass(o.ev)}">${escapeHtml(o.ev)}</span></div>` +
+      `<p>黑1 天元 → 白2 → 黑3。${o.note ? escapeHtml(o.note) : ''}</p>` +
+      `<p class="op-fine">評價為連珠標準規則（含禁手）下的理論結論，供認識棋形參考，與本遊戲實戰勝負無必然關係。</p>` +
+      `<button class="primary" id="btn-play-opening">從此局面開始對弈（你執黑）</button>` +
+      `</div>`;
+    document.getElementById('btn-play-opening').addEventListener('click', () => startFromOpening(o));
+  }
+
+  function selectOpening(i) {
+    openingSel = i;
+    renderOpeningList();
+    renderOpeningDetail();
+  }
+
+  function startFromOpening(o) {
+    if (aiTimer) { clearTimeout(aiTimer); aiTimer = null; }
+    if (auto.timer) { clearTimeout(auto.timer); auto.timer = null; }
+    busy = false;
+    mode = 'ai';
+    humanSide = E.BLACK; aiSide = E.WHITE;
+    replay.active = false;
+    lessonState.active = null;
+    game = E.createGame({ renju: renjuOn });
+    for (const [dx, dy] of o.moves) E.place(game, 7 + dx, 7 + dy);
+    recorded = false;
+    hoverCell = null;
+    hintCell = null;
+    startTime = Date.now();
+    resetCinematic();
+    updateAutoUI();
+    closeModal('modal-openings');
+    setStatus(`「${o.name}」開局 — 電腦將接第 4 手，你執黑`);
+    afterMove(); // 目前輪到白＝aiSide，會自動接手
+  }
+
+  document.getElementById('btn-openings').addEventListener('click', () => {
+    if (!openings.length) return;
+    renderOpeningList();
+    renderOpeningDetail();
+    openModal('modal-openings');
+  });
+  document.getElementById('btn-openings-close').addEventListener('click', () => closeModal('modal-openings'));
+  document.getElementById('opening-list').addEventListener('click', (e) => {
+    const btn = e.target.closest('.op-item');
+    if (btn) selectOpening(+btn.dataset.i);
+  });
+
   /* ---------- 啟動 ---------- */
   window.addEventListener('resize', resize);
   resize();

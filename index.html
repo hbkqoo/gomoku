@@ -6,7 +6,7 @@
 <title>3D 五子棋 — 第一人稱對弈</title>
 <meta name="theme-color" content="#10141c">
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
-<link rel="stylesheet" href="style.css?v=5">
+<link rel="stylesheet" href="style.css?v=6">
 </head>
 <body>
 <div id="app">
@@ -33,6 +33,7 @@
       <button id="btn-heat" title="AI 思考熱力圖">熱力圖</button>
       <button id="btn-lessons">教學</button>
       <button id="btn-puzzles">謎題</button>
+      <button id="btn-openings">定式</button>
       <button id="btn-new">新對局</button>
       <button id="btn-undo">悔棋</button>
       <button id="btn-rank">排行榜</button>
@@ -165,6 +166,19 @@
     </div>
   </div>
 
+  <!-- 開局定式圖鑑 -->
+  <div class="modal" id="modal-openings">
+    <div class="panel wide">
+      <h2>開局定式圖鑑</h2>
+      <p>連珠 26 種標準開局。黑1 天元、白2、黑3 三手決定命名（★ 為經典入門開局）。點左側名稱看棋形與說明。</p>
+      <div class="openings-body">
+        <div id="opening-list"></div>
+        <div id="opening-detail"></div>
+      </div>
+      <div class="row"><button class="primary" id="btn-openings-close">關閉</button></div>
+    </div>
+  </div>
+
   <!-- 殘局謎題 -->
   <div class="modal" id="modal-puzzles">
     <div class="panel">
@@ -214,9 +228,10 @@
     </div>
   </div>
 </div>
-<script src="engine.js?v=5"></script>
-<script src="lessons.js?v=5"></script>
-<script src="puzzles.js?v=5"></script>
-<script src="main.js?v=5"></script>
+<script src="engine.js?v=6"></script>
+<script src="lessons.js?v=6"></script>
+<script src="openings.js?v=6"></script>
+<script src="puzzles.js?v=6"></script>
+<script src="main.js?v=6"></script>
 </body>
 </html>
