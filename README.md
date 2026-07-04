@@ -7,7 +7,7 @@
 AI 升級為 **minimax + alpha-beta 剪枝深度搜尋（四段難度）**，並新增教學、殘局謎題、
 開局定式圖鑑、AI 思考熱力圖、禁手規則、棋譜回放、線上對戰與霓虹開場等功能。
 
-**線上遊玩：https://hbkqoo.github.io/gomoku-3d/**
+**線上遊玩：https://hbkqoo.github.io/gomoku/**
 
 ![遊戲畫面](screenshot.png)
 
