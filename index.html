@@ -6,7 +6,7 @@
 <title>3D 五子棋 — 第一人稱對弈</title>
 <meta name="theme-color" content="#10141c">
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
-<link rel="stylesheet" href="style.css?v=4">
+<link rel="stylesheet" href="style.css?v=5">
 </head>
 <body>
 <div id="app">
@@ -32,6 +32,7 @@
       <button id="btn-coach">教練</button>
       <button id="btn-heat" title="AI 思考熱力圖">熱力圖</button>
       <button id="btn-lessons">教學</button>
+      <button id="btn-puzzles">謎題</button>
       <button id="btn-new">新對局</button>
       <button id="btn-undo">悔棋</button>
       <button id="btn-rank">排行榜</button>
@@ -164,6 +165,31 @@
     </div>
   </div>
 
+  <!-- 殘局謎題 -->
+  <div class="modal" id="modal-puzzles">
+    <div class="panel">
+      <h2>殘局謎題</h2>
+      <p>你執黑棋，從殘局中找出必勝殺著。每一題都保證有解（引擎對打驗證過），下錯會退回重試。</p>
+      <div class="field">
+        <span class="label">每日謎題</span>
+        <button class="primary" data-puzzle="daily">今日挑戰</button>
+        <p id="daily-info" class="hint-text"></p>
+      </div>
+      <div class="field">
+        <span class="label">隨機練習</span>
+        <div class="seg">
+          <button data-puzzle="easy">入門</button>
+          <button data-puzzle="medium">進階</button>
+          <button data-puzzle="hard">高手</button>
+        </div>
+      </div>
+      <p id="puzzle-msg" class="hint-text"></p>
+      <div class="row">
+        <button class="primary" id="btn-puzzles-close">關閉</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 過關 -->
   <div class="modal" id="modal-lesson-done">
     <div class="panel">
@@ -188,8 +214,9 @@
     </div>
   </div>
 </div>
-<script src="engine.js?v=4"></script>
-<script src="lessons.js?v=4"></script>
-<script src="main.js?v=4"></script>
+<script src="engine.js?v=5"></script>
+<script src="lessons.js?v=5"></script>
+<script src="puzzles.js?v=5"></script>
+<script src="main.js?v=5"></script>
 </body>
 </html>

@@ -430,7 +430,7 @@
     document.getElementById('btn-replay').style.display =
       (game.winner && mode !== 'auto' && !replay.active && game.moves.length) ? '' : 'none';
     document.getElementById('replay-ctrl').classList.toggle('show', replay.active);
-    document.getElementById('btn-hint').style.display = (coachOn || mode === 'lesson') ? '' : 'none';
+    document.getElementById('btn-hint').style.display = (coachOn || mode === 'lesson' || mode === 'puzzle') ? '' : 'none';
     document.getElementById('btn-coach').classList.toggle('on', coachOn);
     document.getElementById('btn-heat').classList.toggle('on', heatOn);
     document.getElementById('btn-sound').textContent = sound.enabled ? '🔊' : '🔇';
@@ -442,7 +442,7 @@
     updateTopbar();
     if (game.winner) {
       if (game.winner > 0) sound.win();
-      if (mode !== 'auto' && mode !== 'lesson' && game.winner > 0 && !recorded) setTimeout(openWinModal, 900);
+      if (mode !== 'auto' && mode !== 'lesson' && mode !== 'puzzle' && game.winner > 0 && !recorded) setTimeout(openWinModal, 900);
       return;
     }
     scheduleAI();
@@ -463,7 +463,7 @@
 
   function tryPlace(gx, gy) {
     if (busy || game.winner || mode === 'auto' || intro.active || replay.active) return;
-    if (mode === 'lesson') return lessonPlace(gx, gy);
+    if (mode === 'lesson' || mode === 'puzzle') return lessonPlace(gx, gy);
     if (mode === 'ai' && game.current === aiSide) return;
     if (E.place(game, gx, gy)) {
       sound.stone();
@@ -489,7 +489,7 @@
       resetCinematic();
       updateAutoUI();
     }
-    if (mode === 'lesson') return lessonUndo();
+    if (mode === 'lesson' || mode === 'puzzle') return lessonUndo();
     if (!game.moves.length) return;
     recorded = false;
     hintCell = null;
@@ -1158,6 +1158,7 @@
     const L = lessonState.active;
     sound.win();
     render();
+    if (L.kind === 'puzzle') return puzzleComplete(L);
     const done = loadLessonDone();
     done.add(L.id);
     saveLessonDone(done);
@@ -1165,6 +1166,9 @@
     document.getElementById('ld-title').textContent = `過關！${L.title}`;
     document.getElementById('ld-text').textContent = L.explain;
     document.getElementById('ld-next').style.display = lessonState.idx + 1 < lessons.length ? '' : 'none';
+    document.getElementById('ld-next').textContent = '下一關';
+    document.getElementById('ld-list').textContent = '關卡列表';
+    lessonState.completeKind = 'lesson';
     setTimeout(() => openModal('modal-lesson-done'), 700);
   }
 
@@ -1177,11 +1181,139 @@
     const btn = e.target.closest('.lesson-item');
     if (btn) startLesson(+btn.dataset.i);
   });
-  document.getElementById('ld-next').addEventListener('click', () => startLesson(lessonState.idx + 1));
+  document.getElementById('ld-next').addEventListener('click', () => {
+    closeModal('modal-lesson-done');
+    if (lessonState.completeKind === 'puzzle') return startPractice(lessonState.active.tier);
+    startLesson(lessonState.idx + 1);
+  });
   document.getElementById('ld-list').addEventListener('click', () => {
     closeModal('modal-lesson-done');
+    if (lessonState.completeKind === 'puzzle') { openPuzzleMenu(); return; }
     renderLessonList();
     openModal('modal-lessons');
+  });
+
+  /* ---------- 殘局謎題（每日 + 練習） ---------- */
+  const puzzlesApi = typeof GomokuPuzzles !== 'undefined' ? GomokuPuzzles : null;
+  const PUZZLE_KEY = 'gomoku3d-puzzles-solved';
+  let practiceSeed = 1;
+
+  function todayStr() {
+    const d = new Date();
+    const p = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  }
+  function loadSolved() {
+    try { return JSON.parse(localStorage.getItem(PUZZLE_KEY)) || {}; } catch { return {}; }
+  }
+  function saveSolved(obj) {
+    try { localStorage.setItem(PUZZLE_KEY, JSON.stringify(obj)); } catch {}
+  }
+
+  function openPuzzleMenu() {
+    if (!puzzlesApi) return;
+    const today = todayStr();
+    const tier = puzzlesApi.dailyTier(today);
+    const label = puzzlesApi.TIERS[tier].label;
+    const solved = loadSolved();
+    document.getElementById('daily-info').textContent =
+      `${today}（難度：${label}）${solved[today] ? ' ✓ 今日已破解' : ''}`;
+    document.getElementById('puzzle-msg').textContent = '';
+    openModal('modal-puzzles');
+  }
+
+  // 產生中：鎖住選單、顯示訊息，async 完成後 startPuzzle
+  function generatingUI(msg) {
+    document.getElementById('puzzle-msg').textContent = msg;
+    document.querySelectorAll('#modal-puzzles button[data-puzzle]').forEach((b) => (b.disabled = true));
+  }
+  function generatingDone() {
+    document.querySelectorAll('#modal-puzzles button[data-puzzle]').forEach((b) => (b.disabled = false));
+  }
+
+  function startDaily() {
+    if (!puzzlesApi) return;
+    const today = todayStr();
+    generatingUI('生成今日謎題中…');
+    puzzlesApi.dailyAsync(today, (p) => {
+      generatingDone();
+      if (!p) { document.getElementById('puzzle-msg').textContent = '今日謎題生成失敗，請改試練習題'; return; }
+      closeModal('modal-puzzles');
+      const label = puzzlesApi.TIERS[p.tier].label;
+      startPuzzle(p, { isDaily: true, dateStr: today, title: `每日謎題 ${today}（${label}）` });
+    });
+  }
+
+  function startPractice(tier) {
+    if (!puzzlesApi) return;
+    const t = tier || 'medium';
+    const label = puzzlesApi.TIERS[t].label;
+    generatingUI(`生成${label}練習題中…`);
+    const seed = (Date.now() + (practiceSeed++) * 7919) >>> 0;
+    puzzlesApi.generateAsync(seed, t, (p) => {
+      generatingDone();
+      if (!p) { document.getElementById('puzzle-msg').textContent = '生成失敗，再試一次'; return; }
+      closeModal('modal-puzzles');
+      startPuzzle(p, { isDaily: false, title: `${label}練習題` });
+    });
+  }
+
+  function startPuzzle(puzzle, meta) {
+    if (aiTimer) { clearTimeout(aiTimer); aiTimer = null; }
+    if (auto.timer) { clearTimeout(auto.timer); auto.timer = null; }
+    busy = false;
+    mode = 'puzzle';
+    replay.active = false;
+    lessonState.active = {
+      kind: 'puzzle',
+      title: meta.title,
+      goal: `${puzzle.K} 手內找出殺著取勝`,
+      explain: '漂亮，你找到了致勝殺法！' + (meta.isDaily ? '（每日謎題完成，明天再來挑戰新題）' : ''),
+      setup: puzzle.moves.map((m) => [m.x, m.y]),
+      checkDepth: puzzle.depth,
+      maxMoves: puzzle.K,
+      isDaily: meta.isDaily,
+      dateStr: meta.dateStr,
+      tier: puzzle.tier,
+    };
+    lessonState.moves = 0;
+    lessonState.busyAI = false;
+    game = E.createGame();
+    for (const [x, y] of lessonState.active.setup) E.place(game, x, y);
+    recorded = true;
+    hoverCell = null;
+    hintCell = null;
+    resetCinematic();
+    updateAutoUI();
+    render();
+    lessonStatus();
+    updateTopbar();
+  }
+
+  function puzzleComplete(L) {
+    if (L.isDaily && L.dateStr) {
+      const solved = loadSolved();
+      solved[L.dateStr] = true;
+      saveSolved(solved);
+    }
+    setStatus(`【${L.title}】破解成功！`);
+    document.getElementById('ld-title').textContent = '破解成功！';
+    document.getElementById('ld-text').textContent = L.explain;
+    document.getElementById('ld-next').style.display = '';
+    document.getElementById('ld-next').textContent = '再一題';
+    document.getElementById('ld-list').textContent = '謎題選單';
+    lessonState.completeKind = 'puzzle';
+    setTimeout(() => openModal('modal-lesson-done'), 700);
+  }
+
+  document.getElementById('btn-puzzles').addEventListener('click', openPuzzleMenu);
+  document.getElementById('btn-puzzles-close').addEventListener('click', () => closeModal('modal-puzzles'));
+  document.getElementById('modal-puzzles').addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-puzzle]');
+    if (!btn) return;
+    const kind = btn.dataset.puzzle;
+    if (kind === 'daily') startDaily();
+    else startPractice(kind);
   });
 
   /* ---------- 啟動 ---------- */
