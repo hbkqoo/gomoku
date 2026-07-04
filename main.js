@@ -189,6 +189,8 @@
     if (!W) return;
     updateCam();
 
+    if (intro.active) { renderNeonIntro(); return; }
+
     /* 背景：天空 + 地板（以地平線分界） */
     const horizon = Math.max(0, Math.min(H, CY - F * Math.tan(cam.pitch)));
     let bg = `<rect x="0" y="0" width="${W}" height="${horizon.toFixed(1)}" fill="url(#g-sky)"/>`;
@@ -289,15 +291,9 @@
     }
     layers.stones.innerHTML = sh + st;
 
-    /* 特效層：開場動畫平台 / 勝利連線 */
+    /* 特效層：勝利連線 */
     let fx = '';
-    if (intro.active) {
-      const time = (performance.now() - intro.t0) / 1000;
-      const plats = intro.plats
-        .map((p) => ({ p, d: toView(p.x, p.y, p.z).d }))
-        .sort((a, b2) => b2.d - a.d);
-      for (const it of plats) if (it.d > NEAR) fx += platformSvg(it.p, time);
-    } else if (game.winLine && !flee.active && (!replay.active || replay.index >= game.moves.length)) {
+    if (game.winLine && !flee.active && (!replay.active || replay.index >= game.moves.length)) {
       const pts = game.winLine
         .map((c) => project(gx2w(c.x), STONE_H + 0.05, gx2w(c.y)))
         .filter(Boolean);
@@ -643,54 +639,66 @@
     openModal('modal-setup');
   });
 
-  /* ---------- 開場動畫（無限城致敬，首次進入播 6 秒） ---------- */
-  const INTRO_KEY = 'gomoku3d-intro-seen';
-  const intro = { active: false, t0: 0, plats: [] };
+  /* ---------- 開場動畫（霓虹 Tron 風，首次進入播 6 秒） ---------- */
+  const INTRO_KEY = 'gomoku3d-intro-neon'; // 換鍵：舊訪客會再看到一次新版霓虹開場
+  const intro = { active: false, t0: 0 };
+  const NEON_CYAN = '#38e8ff', NEON_MAG = '#c368ff', NEON_GRN = '#54ffb0';
 
-  function makePlatforms() {
-    const plats = [];
-    for (let i = 0; i < 16; i++) {
-      const ang = i * 2.4 + (i % 3) * 0.7;
-      const rad = 9 + (i % 5) * 4.5;
-      plats.push({
-        x: Math.cos(ang) * rad,
-        z: Math.sin(ang) * rad,
-        y: 4 + i * 3.6,
-        w: 3 + (i % 3) * 1.6,
-        rot: ang,
-        spin: (i % 2 ? 1 : -1) * (0.15 + (i % 4) * 0.08),
-        shoji: i % 3 === 0,
-        lantern: i % 4 === 1,
-      });
-    }
-    return plats;
+  // 霓虹發光線：粗半透明底層 + 細亮核心，模擬輝光（不依賴 SVG filter）
+  function neonLine(a, b, color, w, glowOp, coreOp) {
+    return line3d(a[0], a[1], a[2], b[0], b[1], b[2],
+      `stroke="${color}" stroke-width="${(w * 3.4).toFixed(1)}" stroke-linecap="round" opacity="${glowOp.toFixed(2)}"`) +
+      line3d(a[0], a[1], a[2], b[0], b[1], b[2],
+        `stroke="${color}" stroke-width="${w}" stroke-linecap="round" opacity="${coreOp.toFixed(2)}"`);
   }
 
-  function platformSvg(p, time) {
-    const r = p.rot + time * p.spin;
-    const c = Math.cos(r), s = Math.sin(r);
-    const hw = p.w, hd = p.w * 0.62;
-    const corners = [[-hw, -hd], [hw, -hd], [hw, hd], [-hw, hd]]
-      .map(([ux, uz]) => [p.x + ux * c - uz * s, p.y, p.z + ux * s + uz * c]);
-    let out = quad(corners, '#7a5a2e', 'stroke="#43301a" stroke-width="1"');
-    if (p.shoji) {
-      const a = corners[0], b = corners[1];
-      const hgt = 2.6;
-      out += quad([a, b, [b[0], p.y + hgt, b[2]], [a[0], p.y + hgt, a[2]]],
-        'rgba(240,234,214,.85)', 'stroke="#5a4326" stroke-width="1"');
-      for (let i = 1; i < 4; i++) {
-        const t = i / 4;
-        out += line3d(
-          a[0] + (b[0] - a[0]) * t, p.y, a[2] + (b[2] - a[2]) * t,
-          a[0] + (b[0] - a[0]) * t, p.y + hgt, a[2] + (b[2] - a[2]) * t,
-          'stroke="#5a4326"');
+  function renderNeonIntro() {
+    const time = (performance.now() - intro.t0) / 1000;
+    const prog = Math.min(1, time / 6);
+
+    /* 背景：深空黑 + 地平線輝光帶 */
+    const horizon = Math.max(0, Math.min(H, CY - F * Math.tan(cam.pitch)));
+    let bg = `<rect x="0" y="0" width="${W}" height="${H}" fill="#05070e"/>`;
+    bg += `<rect x="0" y="${(horizon - 70).toFixed(1)}" width="${W}" height="140" fill="url(#g-neon-horizon)" opacity="0.75"/>`;
+    layers.bg.innerHTML = bg;
+
+    let s = '';
+    /* 地板霓虹網格 */
+    const EXT = 24, STEP = 2;
+    for (let i = -EXT; i <= EXT; i += STEP) {
+      const fade = Math.max(0.05, 1 - Math.abs(i) / (EXT + 4));
+      s += neonLine([i, 0.02, -EXT], [i, 0.02, EXT], NEON_CYAN, 1.1, 0.14 * fade, 0.6 * fade);
+      s += neonLine([-EXT, 0.02, i], [EXT, 0.02, i], NEON_CYAN, 1.1, 0.14 * fade, 0.6 * fade);
+    }
+    /* 能量方環：從中心向外擴散的方形脈衝 */
+    for (let k = 0; k < 5; k++) {
+      const r = (time * 5 + k * 3.2) % 16;
+      if (r < 0.4) continue;
+      const col = k % 2 ? NEON_MAG : NEON_GRN;
+      const a = Math.max(0, 1 - r / 16);
+      const c = [[-r, 0.03, -r], [r, 0.03, -r], [r, 0.03, r], [-r, 0.03, r]];
+      for (let e = 0; e < 4; e++) s += neonLine(c[e], c[(e + 1) % 4], col, 1.4, 0.18 * a, 0.85 * a);
+    }
+    /* 棋盤四角光柱（脈動） */
+    const B = BOARD_HALF;
+    const pulse = 4 + 2 * Math.sin(time * 3);
+    for (const [cx, cz] of [[-B, -B], [B, -B], [B, B], [-B, B]]) {
+      s += neonLine([cx, 0, cz], [cx, pulse, cz], NEON_MAG, 1.6, 0.16, 0.8);
+    }
+    /* 棋盤通電浮現：15×15 內格 + 外框，後段亮起 */
+    const gridA = Math.max(0, (prog - 0.25) / 0.75);
+    if (gridA > 0) {
+      for (let i = 0; i < SIZE; i++) {
+        const w = gx2w(i);
+        s += neonLine([w, 0.04, -HALF], [w, 0.04, HALF], NEON_CYAN, 1, 0.1 * gridA, 0.8 * gridA);
+        s += neonLine([-HALF, 0.04, w], [HALF, 0.04, w], NEON_CYAN, 1, 0.1 * gridA, 0.8 * gridA);
       }
+      const ob = [[-B, 0.05, -B], [B, 0.05, -B], [B, 0.05, B], [-B, 0.05, B]];
+      for (let e = 0; e < 4; e++) s += neonLine(ob[e], ob[(e + 1) % 4], NEON_GRN, 2, 0.22 * gridA, gridA);
     }
-    if (p.lantern) {
-      const lp = project(p.x, p.y + 1.6, p.z);
-      if (lp) out += `<circle cx="${lp.x.toFixed(1)}" cy="${lp.y.toFixed(1)}" r="${(F * 0.5 / lp.d).toFixed(1)}" fill="url(#g-lantern)"/>`;
-    }
-    return out;
+    layers.board.innerHTML = s;
+    layers.stones.innerHTML = '';
+    layers.fx.innerHTML = '';
   }
 
   const easeIO = (t) => (t < 0.5 ? 2 * t * t : 1 - (2 - 2 * t) ** 2 / 2);
@@ -698,18 +706,17 @@
   function playIntro() {
     intro.active = true;
     intro.t0 = performance.now();
-    intro.plats = makePlatforms();
-    document.getElementById('intro-title').classList.add('show');
-    setStatus('無限之城……');
+    document.getElementById('intro-title').classList.add('show', 'neon');
+    setStatus('系統啟動中……');
     requestAnimationFrame(introFrame);
   }
   function introFrame(now) {
     if (!intro.active) return;
     const t = Math.min(1, (now - intro.t0) / 6000);
     const e = easeIO(t);
-    cam.dist = 55 - (55 - 13.5) * e;
-    cam.pitch = 1.25 - (1.25 - 0.52) * e;
-    cam.yaw = (1 - e) * Math.PI * 3;
+    cam.dist = 46 - (46 - 13.5) * e;
+    cam.pitch = 1.2 - (1.2 - 0.52) * e;
+    cam.yaw = (1 - e) * Math.PI * 2.5;
     render();
     if (t >= 1) endIntro();
     else requestAnimationFrame(introFrame);
@@ -717,9 +724,8 @@
   function endIntro() {
     if (!intro.active) return;
     intro.active = false;
-    intro.plats = [];
     cam.yaw = 0; cam.pitch = 0.52; cam.dist = 13.5;
-    document.getElementById('intro-title').classList.remove('show');
+    document.getElementById('intro-title').classList.remove('show', 'neon');
     try { localStorage.setItem(INTRO_KEY, '1'); } catch {}
     render();
     setStatus('選擇模式開始對局');

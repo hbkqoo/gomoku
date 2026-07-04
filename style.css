@@ -326,6 +326,23 @@ input[type=text]:focus { border-color: #d9b878; }
   animation: intro-in 2.2s .8s both;
 }
 #intro-title small { font-size: 13px; color: rgba(232, 230, 223, .6); animation: meme-fade 1s 1.6s both; }
+
+/* 霓虹開場標題 */
+#intro-title.neon span {
+  color: #eaffff;
+  text-shadow:
+    0 0 8px #38e8ff, 0 0 22px #38e8ff, 0 0 40px #38e8ff,
+    0 0 70px #c368ff, 0 2px 4px rgba(0, 0, 0, .8);
+  animation: intro-in 2.2s .8s both, neon-flicker 2.6s .4s infinite alternate;
+}
+#intro-title.neon small { color: #8fdcff; }
+@keyframes neon-flicker {
+  0%, 100% { opacity: 1; }
+  46% { opacity: 1; }
+  48% { opacity: .72; }
+  50% { opacity: 1; }
+  92% { opacity: .85; }
+}
 @keyframes intro-in { from { opacity: 0; letter-spacing: 34px; } to { opacity: 1; letter-spacing: 14px; } }
 
 @media (max-width: 480px) {
