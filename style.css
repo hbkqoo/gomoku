@@ -244,6 +244,15 @@ input[type=text]:focus { border-color: #d9b878; }
   #opening-list { flex: none; max-height: 30vh; }
 }
 
+/* 線上對戰 */
+#online-choose { display: flex; flex-direction: column; gap: 8px; }
+.code-box {
+  width: 100%; font: 12px/1.4 monospace; resize: vertical;
+  padding: 8px 10px; border-radius: 8px; border: 1px solid #3a4560;
+  background: #0b0e15; color: #b9c0d0; word-break: break-all;
+}
+.code-box:focus { border-color: #d9b878; outline: none; }
+
 /* 謎題選單 */
 .hint-text { font-size: 13px; color: #8f9ab3; }
 #daily-info { color: #d9b878; }

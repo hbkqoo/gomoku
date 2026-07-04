@@ -106,6 +106,8 @@
   const heatCache = { key: '', list: [] };
   const replay = { active: false, index: 0, board: null }; // 棋譜回放
   const lessonState = { active: null, idx: -1, moves: 0, busyAI: false };
+  let net = null;         // 線上連線（WebRTC）
+  let mySide = E.BLACK;   // 線上對戰中我方執色
   const lessons = typeof GomokuLessons !== 'undefined' ? GomokuLessons : [];
 
   /* ---------- 音效（Web Audio 合成，不需音檔） ---------- */
@@ -419,6 +421,10 @@
     }
     const c = game.current === E.BLACK ? '黑棋' : '白棋';
     if (mode === 'ai') return game.current === aiSide ? '電腦思考中…' : `你的回合（${c}）`;
+    if (mode === 'online') {
+      const meC = mySide === E.BLACK ? '黑棋' : '白棋';
+      return game.current === mySide ? `你的回合（${meC}）` : '等待對方落子…';
+    }
     return `${c}回合`;
   }
 
@@ -438,7 +444,7 @@
     updateTopbar();
     if (game.winner) {
       if (game.winner > 0) sound.win();
-      if (mode !== 'auto' && mode !== 'lesson' && mode !== 'puzzle' && game.winner > 0 && !recorded) setTimeout(openWinModal, 900);
+      if (mode !== 'auto' && mode !== 'lesson' && mode !== 'puzzle' && mode !== 'online' && game.winner > 0 && !recorded) setTimeout(openWinModal, 900);
       return;
     }
     scheduleAI();
@@ -459,6 +465,7 @@
 
   function tryPlace(gx, gy) {
     if (busy || game.winner || mode === 'auto' || intro.active || replay.active) return;
+    if (mode === 'online') return onlinePlace(gx, gy);
     if (mode === 'lesson' || mode === 'puzzle') return lessonPlace(gx, gy);
     if (mode === 'ai' && game.current === aiSide) return;
     if (E.place(game, gx, gy)) {
@@ -486,6 +493,14 @@
       updateAutoUI();
     }
     if (mode === 'lesson' || mode === 'puzzle') return lessonUndo();
+    if (mode === 'online') {
+      if (!game.moves.length) return;
+      E.undo(game);
+      hintCell = null;
+      if (net) net.send({ t: 'undo' });
+      afterMove();
+      return;
+    }
     if (!game.moves.length) return;
     recorded = false;
     hintCell = null;
@@ -498,6 +513,7 @@
   function newGame() {
     if (aiTimer) { clearTimeout(aiTimer); aiTimer = null; }
     if (auto.timer) { clearTimeout(auto.timer); auto.timer = null; }
+    if (net) { try { net.close(); } catch {} net = null; } // 開始單機局即離線
     busy = false;
     replay.active = false;
     lessonState.active = null;
@@ -986,7 +1002,15 @@
     closeModal('modal-setup');
     newGame();
   });
-  document.getElementById('btn-new').addEventListener('click', () => openModal('modal-setup'));
+  document.getElementById('btn-new').addEventListener('click', () => {
+    if (mode === 'online' && net && net.open) {
+      onlineReset();
+      net.send({ t: 'new' });
+      setStatus('已重新開局（雙方同步）');
+      return;
+    }
+    openModal('modal-setup');
+  });
   document.getElementById('btn-undo').addEventListener('click', doUndo);
 
   /* ---------- 棋譜回放 ---------- */
@@ -1452,6 +1476,159 @@
     if (btn) selectOpening(+btn.dataset.i);
   });
 
+  /* ---------- 線上對戰（WebRTC P2P，邀請碼／回應碼手動互換） ---------- */
+  const NET = typeof GomokuNet !== 'undefined' ? GomokuNet : null;
+
+  function onlineHandlers(sideOnOpen) {
+    return {
+      onOpen: () => onlineConnected(sideOnOpen),
+      onMessage: onNetMessage,
+      onClose: onlineDisconnect,
+    };
+  }
+
+  function onlineConnected(side) {
+    mySide = side;
+    mode = 'online';
+    busy = false;
+    replay.active = false;
+    lessonState.active = null;
+    game = E.createGame(); // 線上不啟用禁手，避免兩端判定不一致
+    recorded = true;
+    hoverCell = null;
+    hintCell = null;
+    startTime = Date.now();
+    resetCinematic();
+    updateAutoUI();
+    closeModal('modal-online');
+    render();
+    updateTopbar();
+    setStatus(side === E.BLACK ? '已連線！你執黑，請先下' : '已連線！你執白，等黑方落子');
+  }
+
+  function onlinePlace(gx, gy) {
+    if (!net || !net.open) { setStatus('尚未連線'); return; }
+    if (game.current !== mySide) { setStatus('現在是對方的回合'); return; }
+    if (E.place(game, gx, gy)) {
+      sound.stone();
+      hoverCell = null;
+      hintCell = null;
+      net.send({ t: 'move', x: gx, y: gy });
+      afterMove();
+    }
+  }
+
+  function onNetMessage(m) {
+    if (!m || mode !== 'online') return;
+    if (m.t === 'move') {
+      if (game.winner) return;
+      if (game.current === mySide) return; // 只接受對方回合的落子
+      if (E.place(game, m.x, m.y)) { sound.stone(); afterMove(); }
+    } else if (m.t === 'undo') {
+      if (game.moves.length) { E.undo(game); afterMove(); }
+    } else if (m.t === 'new') {
+      onlineReset();
+    }
+  }
+
+  function onlineReset() {
+    game = E.createGame();
+    recorded = true;
+    hoverCell = null;
+    hintCell = null;
+    render();
+    setStatus(turnText());
+    updateTopbar();
+  }
+
+  let disconnecting = false;
+  function onlineDisconnect() {
+    if (mode !== 'online' && !net) return;
+    if (disconnecting) return;
+    disconnecting = true;
+    try { if (net) net.close(); } catch {}
+    net = null;
+    if (mode === 'online') {
+      mode = 'pvp';
+      setStatus('連線已結束，回到單機。可從「連線」重新配對。');
+      updateTopbar();
+    }
+    resetOnlineUI();
+    setTimeout(() => { disconnecting = false; }, 300);
+  }
+
+  function resetOnlineUI() {
+    const connected = net && net.open;
+    document.getElementById('online-choose').style.display = connected ? 'none' : '';
+    document.getElementById('online-host').style.display = 'none';
+    document.getElementById('online-guest').style.display = 'none';
+    document.getElementById('online-connected').style.display = connected ? '' : 'none';
+    ['host-offer', 'host-answer', 'guest-offer', 'guest-answer'].forEach((id) => (document.getElementById(id).value = ''));
+    document.getElementById('online-msg').textContent = '';
+  }
+
+  function openOnlineMenu() {
+    if (!NET || !NET.supported) {
+      resetOnlineUI();
+      document.getElementById('online-msg').textContent = '此瀏覽器不支援 WebRTC，無法線上對戰。';
+      openModal('modal-online');
+      return;
+    }
+    resetOnlineUI();
+    openModal('modal-online');
+  }
+
+  const onlineMsg = (t) => (document.getElementById('online-msg').textContent = t);
+
+  document.getElementById('btn-online').addEventListener('click', openOnlineMenu);
+  document.getElementById('btn-online-close').addEventListener('click', () => closeModal('modal-online'));
+
+  document.getElementById('btn-host').addEventListener('click', async () => {
+    try {
+      onlineMsg('產生邀請碼中…');
+      net = await NET.host(onlineHandlers(E.BLACK));
+      document.getElementById('online-choose').style.display = 'none';
+      document.getElementById('online-host').style.display = '';
+      document.getElementById('host-offer').value = net.offerCode;
+      onlineMsg('把「邀請碼」傳給朋友，等他回傳「回應碼」貼在下面。');
+    } catch (e) { onlineMsg('建立失敗：' + e.message); }
+  });
+  document.getElementById('host-connect').addEventListener('click', async () => {
+    const code = document.getElementById('host-answer').value.trim();
+    if (!code) return onlineMsg('請先貼上朋友的回應碼');
+    try { onlineMsg('連線中…'); await net.acceptAnswer(code); }
+    catch (e) { onlineMsg('回應碼無效或連線失敗：' + e.message); }
+  });
+
+  document.getElementById('btn-guest').addEventListener('click', () => {
+    document.getElementById('online-choose').style.display = 'none';
+    document.getElementById('online-guest').style.display = '';
+    onlineMsg('貼上朋友給你的邀請碼，再按「產生回應碼」。');
+  });
+  document.getElementById('guest-gen').addEventListener('click', async () => {
+    const code = document.getElementById('guest-offer').value.trim();
+    if (!code) return onlineMsg('請先貼上朋友的邀請碼');
+    try {
+      onlineMsg('產生回應碼中…');
+      net = await NET.join(code, onlineHandlers(E.WHITE));
+      document.getElementById('guest-answer').value = net.answerCode;
+      onlineMsg('把「回應碼」傳回給朋友，他貼上後就會連線。');
+    } catch (e) { onlineMsg('邀請碼無效：' + e.message); }
+  });
+
+  function copyField(id, okMsg) {
+    const ta = document.getElementById(id);
+    ta.select();
+    const text = ta.value;
+    const done = () => onlineMsg(okMsg);
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, () => { try { document.execCommand('copy'); done(); } catch {} });
+    } else { try { document.execCommand('copy'); done(); } catch {} }
+  }
+  document.getElementById('copy-offer').addEventListener('click', () => copyField('host-offer', '已複製邀請碼，傳給朋友吧！'));
+  document.getElementById('copy-answer').addEventListener('click', () => copyField('guest-answer', '已複製回應碼，傳回給朋友吧！'));
+  document.getElementById('btn-disconnect').addEventListener('click', () => { onlineDisconnect(); closeModal('modal-online'); });
+
   /* ---------- 啟動 ---------- */
   window.addEventListener('resize', resize);
   resize();
@@ -1466,6 +1643,9 @@
 
   window.__g3d = {
     get game() { return game; },
+    get mode() { return mode; },
+    get mySide() { return mySide; },
+    get netOpen() { return !!(net && net.open); },
     screenPt: (gx, gy) => screenPts[gy] && screenPts[gy][gx],
     cam,
     render,

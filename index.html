@@ -6,7 +6,7 @@
 <title>3D 五子棋 — 第一人稱對弈</title>
 <meta name="theme-color" content="#10141c">
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
-<link rel="stylesheet" href="style.css?v=8">
+<link rel="stylesheet" href="style.css?v=9">
 </head>
 <body>
 <div id="app">
@@ -34,6 +34,7 @@
       <button id="btn-lessons">教學</button>
       <button id="btn-puzzles">謎題</button>
       <button id="btn-openings">定式</button>
+      <button id="btn-online">連線</button>
       <button id="btn-new">新對局</button>
       <button id="btn-undo">悔棋</button>
       <button id="btn-rank">排行榜</button>
@@ -178,6 +179,48 @@
     </div>
   </div>
 
+  <!-- 線上對戰 -->
+  <div class="modal" id="modal-online">
+    <div class="panel">
+      <h2>線上對戰</h2>
+      <p class="hint-text">和朋友直接連線對弈，不需伺服器或帳號。用任何聊天工具互傳「邀請碼／回應碼」即可。主機執黑先手。</p>
+      <div id="online-choose">
+        <button class="primary" id="btn-host">我當主機（產生邀請碼）</button>
+        <button id="btn-guest">加入朋友（貼上邀請碼）</button>
+      </div>
+      <div id="online-host" style="display:none">
+        <div class="field">
+          <span class="label">① 你的邀請碼 — 傳給朋友</span>
+          <textarea id="host-offer" class="code-box" readonly rows="3"></textarea>
+          <button class="mini" id="copy-offer">複製邀請碼</button>
+        </div>
+        <div class="field">
+          <span class="label">② 貼上朋友回傳的回應碼，再按連線</span>
+          <textarea id="host-answer" class="code-box" rows="3" placeholder="在此貼上回應碼"></textarea>
+          <button class="mini" id="host-connect">連線</button>
+        </div>
+      </div>
+      <div id="online-guest" style="display:none">
+        <div class="field">
+          <span class="label">① 貼上朋友的邀請碼，再按產生回應碼</span>
+          <textarea id="guest-offer" class="code-box" rows="3" placeholder="在此貼上邀請碼"></textarea>
+          <button class="mini" id="guest-gen">產生回應碼</button>
+        </div>
+        <div class="field">
+          <span class="label">② 你的回應碼 — 傳回給朋友</span>
+          <textarea id="guest-answer" class="code-box" readonly rows="3"></textarea>
+          <button class="mini" id="copy-answer">複製回應碼</button>
+        </div>
+      </div>
+      <div id="online-connected" style="display:none">
+        <p class="hint-text">目前已連線中。</p>
+        <button id="btn-disconnect">結束連線</button>
+      </div>
+      <p id="online-msg" class="hint-text"></p>
+      <div class="row"><button id="btn-online-close">關閉</button></div>
+    </div>
+  </div>
+
   <!-- 開局定式圖鑑 -->
   <div class="modal" id="modal-openings">
     <div class="panel wide">
@@ -240,10 +283,11 @@
     </div>
   </div>
 </div>
-<script src="engine.js?v=8"></script>
-<script src="lessons.js?v=8"></script>
-<script src="openings.js?v=8"></script>
-<script src="puzzles.js?v=8"></script>
-<script src="main.js?v=8"></script>
+<script src="engine.js?v=9"></script>
+<script src="lessons.js?v=9"></script>
+<script src="openings.js?v=9"></script>
+<script src="puzzles.js?v=9"></script>
+<script src="online.js?v=9"></script>
+<script src="main.js?v=9"></script>
 </body>
 </html>
