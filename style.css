@@ -161,8 +161,8 @@ input[type=text]:focus { border-color: #d9b878; }
   white-space: nowrap;
 }
 
-/* 教練模式 / 熱力圖開關 */
-#btn-coach.on, #btn-heat.on { background: #b8873a; border-color: #d9b878; color: #16120a; font-weight: 700; }
+/* 教練模式 / 熱力圖 / 特效開關 */
+#btn-coach.on, #btn-heat.on, #btn-fx.on { background: #b8873a; border-color: #d9b878; color: #16120a; font-weight: 700; }
 
 /* 禁手規則勾選 */
 .chk {

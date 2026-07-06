@@ -110,6 +110,86 @@
   let mySide = E.BLACK;   // 線上對戰中我方執色
   const lessons = typeof GomokuLessons !== 'undefined' ? GomokuLessons : [];
 
+  /* ---------- 落子/勝利特效 ---------- */
+  let fxOn = true;        // 活潑特效開關
+  try { fxOn = localStorage.getItem('gomoku3d-fx') !== '0'; } catch {}
+  const fxList = [];      // 進行中的特效：{ kind:'place'|'win', gx, gy, player, line, t0 }
+  let fxRAF = null;
+  const FX_DUR = { place: 480, win: 1200 };
+  const easeOutBack = (t) => { const c = 1.70158, c3 = c + 1; return 1 + c3 * (t - 1) ** 3 + c * (t - 1) ** 2; };
+
+  // 針對「最後落下的一子」觸發特效；勝利時追加勝利特效
+  function fxAfterPlace() {
+    if (!fxOn) return;
+    const m = game.moves[game.moves.length - 1];
+    if (!m) return;
+    fxList.push({ kind: 'place', gx: m.x, gy: m.y, player: m.player, t0: performance.now() });
+    if (game.winner > 0 && game.winLine) {
+      fxList.push({ kind: 'win', line: game.winLine, player: m.player, t0: performance.now() });
+    }
+    ensureFxLoop();
+  }
+
+  function ensureFxLoop() {
+    if (fxRAF) return;
+    const step = () => {
+      const now = performance.now();
+      for (let i = fxList.length - 1; i >= 0; i--) {
+        if (now - fxList[i].t0 > FX_DUR[fxList[i].kind]) fxList.splice(i, 1);
+      }
+      render();
+      if (fxList.length) fxRAF = requestAnimationFrame(step);
+      else { fxRAF = null; render(); }
+    };
+    fxRAF = requestAnimationFrame(step);
+  }
+
+  // 產生落子/勝利特效的 SVG（畫在 fx 層）
+  function fxSvg(now) {
+    let out = '';
+    for (const f of fxList) {
+      const p = Math.min(1, (now - f.t0) / FX_DUR[f.kind]);
+      if (f.kind === 'place') {
+        const c = project(gx2w(f.gx), STONE_H, gx2w(f.gy));
+        if (!c) continue;
+        const base = F * STONE_R / c.d;
+        // 擴散光環
+        const rr = base * (1 + p * 1.9);
+        out += `<circle cx="${c.x.toFixed(1)}" cy="${c.y.toFixed(1)}" r="${rr.toFixed(1)}" fill="none" stroke="#ffd166" stroke-width="${(2.6 * (1 - p)).toFixed(2)}" opacity="${(0.85 * (1 - p)).toFixed(2)}"/>`;
+        // 火花
+        const nSp = 7;
+        for (let k = 0; k < nSp; k++) {
+          const ang = (k / nSp) * Math.PI * 2 + f.gx * 0.7 + f.gy * 1.3;
+          const dist = base * (0.3 + p * 2.2);
+          const sx = c.x + Math.cos(ang) * dist, sy = c.y + Math.sin(ang) * dist * 0.6;
+          const sr = Math.max(0.5, base * 0.12 * (1 - p));
+          out += `<circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="${sr.toFixed(1)}" fill="#ffe08a" opacity="${(0.9 * (1 - p)).toFixed(2)}"/>`;
+        }
+      } else if (f.kind === 'win') {
+        // 勝利：從連線中點爆出的衝擊波環 + 粒子
+        const mid = f.line[Math.floor(f.line.length / 2)];
+        const c = project(gx2w(mid.x), STONE_H, gx2w(mid.y));
+        if (!c) continue;
+        const base = F * STONE_R / c.d;
+        for (let w = 0; w < 2; w++) {
+          const wp = Math.min(1, p * 1.4 - w * 0.25);
+          if (wp <= 0) continue;
+          const rr = base * (1 + wp * 7);
+          out += `<circle cx="${c.x.toFixed(1)}" cy="${c.y.toFixed(1)}" r="${rr.toFixed(1)}" fill="none" stroke="${w ? '#ffb35c' : '#ffd166'}" stroke-width="${(3.5 * (1 - wp)).toFixed(2)}" opacity="${(0.8 * (1 - wp)).toFixed(2)}"/>`;
+        }
+        const nP = 18;
+        for (let k = 0; k < nP; k++) {
+          const ang = (k / nP) * Math.PI * 2 + k * 0.3;
+          const dist = base * (0.5 + p * 5.5);
+          const sx = c.x + Math.cos(ang) * dist, sy = c.y + Math.sin(ang) * dist * 0.65 - p * base * 1.5;
+          const sr = Math.max(0.6, base * 0.16 * (1 - p));
+          out += `<circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="${sr.toFixed(1)}" fill="${k % 2 ? '#ffd166' : '#fff1b8'}" opacity="${(0.95 * (1 - p)).toFixed(2)}"/>`;
+        }
+      }
+    }
+    return out;
+  }
+
   /* ---------- 音效（Web Audio 合成，不需音檔） ---------- */
   const sound = (() => {
     let ctx = null, enabled = true;
@@ -272,8 +352,20 @@
       .sort((a, b2) => b2.c.d - a.c.d);
     const last = dispMoves[dispMoves.length - 1];
     const showLastMark = replay.active || !game.winner;
+    // 剛落下的棋子彈跳登場（pop）
+    const fxNow = performance.now();
+    const popMap = (fxOn && !replay.active && fxList.length) ? new Map(
+      fxList.filter((f) => f.kind === 'place').map((f) => [f.gy * SIZE + f.gx, f.t0])
+    ) : null;
     for (const s of items) {
-      const rx = F * STONE_R / s.c.d, ry = rx * squash;
+      let rx = F * STONE_R / s.c.d, ry = rx * squash;
+      if (popMap) {
+        const t0 = popMap.get(s.gy * SIZE + s.gx);
+        if (t0 !== undefined) {
+          const pp = (fxNow - t0) / 200;
+          if (pp < 1) { const sc = Math.max(0.15, easeOutBack(Math.max(0, pp))); rx *= sc; ry *= sc; }
+        }
+      }
       const shp = project(s.wx + 0.08, 0.01, s.wz + 0.08);
       if (shp) sh += `<ellipse cx="${shp.x.toFixed(1)}" cy="${shp.y.toFixed(1)}" rx="${(rx * 1.02).toFixed(1)}" ry="${(rx * sp_ * 0.95).toFixed(1)}" fill="rgba(0,0,0,${(0.28 * s.op).toFixed(2)})"/>`;
       st += `<ellipse cx="${s.c.x.toFixed(1)}" cy="${s.c.y.toFixed(1)}" rx="${rx.toFixed(1)}" ry="${ry.toFixed(1)}" fill="url(#g-${s.v === E.BLACK ? 'black' : 'white'})"${s.op < 1 ? ` opacity="${s.op.toFixed(2)}"` : ''}/>`;
@@ -383,6 +475,10 @@
           `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${(r * 0.55).toFixed(1)}" fill="#ffd166" opacity=".35"/>`;
       }
     }
+
+    /* 落子/勝利活潑特效 */
+    if (fxOn && fxList.length && !replay.active) fx += fxSvg(fxNow);
+
     layers.fx.innerHTML = fx;
   }
 
@@ -435,6 +531,7 @@
     document.getElementById('btn-hint').style.display = (coachOn || mode === 'lesson' || mode === 'puzzle') ? '' : 'none';
     document.getElementById('btn-coach').classList.toggle('on', coachOn);
     document.getElementById('btn-heat').classList.toggle('on', heatOn);
+    document.getElementById('btn-fx').classList.toggle('on', fxOn);
     document.getElementById('btn-sound').textContent = sound.enabled ? '🔊' : '🔇';
   }
 
@@ -457,7 +554,7 @@
     aiTimer = setTimeout(() => {
       aiTimer = null;
       const mv = E.aiMove(game, { level: aiLevel });
-      if (mv) { E.place(game, mv.x, mv.y); sound.stone(); }
+      if (mv) { E.place(game, mv.x, mv.y); sound.stone(); fxAfterPlace(); }
       busy = false;
       afterMove();
     }, 380);
@@ -470,6 +567,7 @@
     if (mode === 'ai' && game.current === aiSide) return;
     if (E.place(game, gx, gy)) {
       sound.stone();
+      fxAfterPlace();
       hoverCell = null;
       hintCell = null;
       afterMove();
@@ -576,7 +674,7 @@
     // 觀戰模式雙方都用單手啟發式（depth: 0）：保持原作的強弱平衡，
     // 大哥太強的話對手永遠贏不了，時間倒轉與結局彩蛋就不會觸發
     const mv = E.aiMove(game, isBoss ? { depth: 0 } : { jitter: 1, pool: 4 });
-    if (mv) { E.place(game, mv.x, mv.y); sound.stone(); }
+    if (mv) { E.place(game, mv.x, mv.y); sound.stone(); fxAfterPlace(); }
     render();
     setStatus(turnText());
     if (game.winner) return autoResolve();
@@ -1087,6 +1185,14 @@
     sound.toggle();
     updateTopbar();
   });
+  document.getElementById('btn-fx').addEventListener('click', () => {
+    fxOn = !fxOn;
+    try { localStorage.setItem('gomoku3d-fx', fxOn ? '1' : '0'); } catch {}
+    if (!fxOn) { fxList.length = 0; if (fxRAF) { cancelAnimationFrame(fxRAF); fxRAF = null; } }
+    updateTopbar();
+    render();
+    setStatus(fxOn ? '落子特效已開啟' : '落子特效已關閉');
+  });
 
   /* ---------- 教學關卡 ---------- */
   const LESSON_KEY = 'gomoku3d-lessons-done';
@@ -1169,6 +1275,7 @@
     const L = lessonState.active;
     if (!E.place(game, gx, gy)) return;
     sound.stone();
+    fxAfterPlace();
     hoverCell = null;
     hintCell = null;
     lessonState.moves++;
@@ -1193,7 +1300,7 @@
     setStatus('對手防守中…');
     setTimeout(() => {
       const mv = E.aiMove(game, { level: 'hard' });
-      if (mv) { E.place(game, mv.x, mv.y); sound.stone(); }
+      if (mv) { E.place(game, mv.x, mv.y); sound.stone(); fxAfterPlace(); }
       lessonState.busyAI = false;
       render();
       if (game.winner === E.BLACK) return lessonComplete();
@@ -1520,6 +1627,7 @@
     if (game.current !== mySide) { setStatus('現在是對方的回合'); return; }
     if (E.place(game, gx, gy)) {
       sound.stone();
+      fxAfterPlace();
       hoverCell = null;
       hintCell = null;
       net.send({ t: 'move', x: gx, y: gy });
@@ -1532,7 +1640,7 @@
     if (m.t === 'move') {
       if (game.winner) return;
       if (game.current === mySide) return; // 只接受對方回合的落子
-      if (E.place(game, m.x, m.y)) { sound.stone(); afterMove(); }
+      if (E.place(game, m.x, m.y)) { sound.stone(); fxAfterPlace(); afterMove(); }
     } else if (m.t === 'undo') {
       if (game.moves.length) { E.undo(game); afterMove(); }
     } else if (m.t === 'new') {
@@ -1641,6 +1749,7 @@
   /* ---------- 啟動 ---------- */
   window.addEventListener('resize', resize);
   resize();
+  updateTopbar(); // 讓特效/音效等開關按鈕一開始就反映狀態
   let introSeen = true;
   try { introSeen = !!localStorage.getItem(INTRO_KEY); } catch {}
   if (introSeen) {
