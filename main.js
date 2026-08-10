@@ -39,6 +39,113 @@
     };
   }
 
+  /* ---------- 視角模式：2D 俯視 / 回正 / 鎖定 ---------- */
+  const VIEW_KEY = 'gomoku3d-view';
+  const CAM_DEFAULT = { yaw: 0, pitch: 0.52, dist: 13.5 };
+  // 2D 俯視＝把相機搬到棋盤正上方直視。pitch 取「逼近」π/2 而不取等值：
+  // 剛好 π/2 時 tan(pitch) 會溢位、視空間基底退化，投影會除出 Infinity／NaN，
+  // 畫面會靜默變成整片空白（不會噴錯，很難查）。
+  const CAM_2D = { yaw: 0, pitch: Math.PI / 2 - 0.002, dist: 15 };
+  // view 存的是「3D 模式下的角度」。2D 只是暫時改用 CAM_2D 顯示，
+  // 切回 3D 時原本的角度要原封不動回來（與西洋棋一致）。
+  const view = { mode: '3d', yaw: CAM_DEFAULT.yaw, pitch: CAM_DEFAULT.pitch, dist: CAM_DEFAULT.dist, locked: false };
+  const TAU = Math.PI * 2;
+  const canOrbit = () => view.mode === '3d' && !view.locked;
+
+  function numOr(v, fallback) {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : fallback;
+  }
+  function clampView() {
+    // 先轉數值再夾範圍：localStorage 可能被寫進字串或 null，
+    // NaN 會一路傳染到 sin/cos，整個場景靜默消失。
+    let y = numOr(view.yaw, CAM_DEFAULT.yaw) % TAU;
+    if (y > Math.PI) y -= TAU;
+    if (y <= -Math.PI) y += TAU;
+    view.yaw = y;
+    view.pitch = Math.min(1.35, Math.max(0.18, numOr(view.pitch, CAM_DEFAULT.pitch)));
+    view.dist = Math.min(30, Math.max(6, numOr(view.dist, CAM_DEFAULT.dist)));
+    view.locked = view.locked === true;   // 只認真正的 true
+    view.mode = view.mode === '2d' ? '2d' : '3d';
+  }
+  function loadView() {
+    try {
+      const v = JSON.parse(localStorage.getItem(VIEW_KEY));
+      if (v && typeof v === 'object') Object.assign(view, v);
+    } catch {}
+    clampView();
+  }
+  function saveView() {
+    try { localStorage.setItem(VIEW_KEY, JSON.stringify(view)); } catch {}
+  }
+  function syncCam() {
+    const src = view.mode === '2d' ? CAM_2D : view;
+    cam.yaw = src.yaw; cam.pitch = src.pitch; cam.dist = src.dist;
+  }
+  // 是否還停在預設角度（決定「回正」要不要亮起來）
+  function viewIsDefault() {
+    return Math.abs(view.yaw - CAM_DEFAULT.yaw) < 1e-6 &&
+      Math.abs(view.pitch - CAM_DEFAULT.pitch) < 1e-6 &&
+      Math.abs(view.dist - CAM_DEFAULT.dist) < 1e-6;
+  }
+  // 在第一次 render 之前就把相機擺好，避免開場閃一下預設視角
+  loadView();
+  syncCam();
+
+  function applyView() {
+    clampView();
+    const is3d = view.mode === '3d';
+    svg.classList.toggle('view-2d', !is3d);
+    svg.classList.toggle('locked', view.locked);
+
+    const btnView = document.getElementById('btn-view');
+    btnView.textContent = is3d ? '2D 視角' : '3D 視角';
+    btnView.title = is3d ? '切換成 2D 俯視（從正上方直視棋盤）' : '切回 3D 立體視角';
+
+    const btnLock = document.getElementById('btn-lock');
+    btnLock.textContent = view.locked ? '🔒 已鎖定' : '🔓 鎖定視角';
+    btnLock.setAttribute('aria-pressed', view.locked ? 'true' : 'false');
+    btnLock.title = view.locked
+      ? '目前已鎖定：拖曳與縮放不會改變視角（「回正」仍可用）'
+      : '鎖定視角，避免下棋時不小心拖動角度';
+    btnLock.disabled = !is3d;   // 2D 沒有角度可鎖
+
+    const btnRecenter = document.getElementById('btn-recenter');
+    btnRecenter.disabled = !is3d || viewIsDefault();
+    btnRecenter.title = is3d ? '把視角方向、俯角與縮放回到預設值' : '2D 俯視沒有角度可回正';
+
+    document.getElementById('hint').textContent = !is3d
+      ? '2D 俯視 · 點擊交叉點落子'
+      : view.locked
+        ? '視角已鎖定 · 點擊交叉點落子'
+        : '拖曳環顧四周 · 滾輪/雙指縮放 · 點擊交叉點落子';
+
+    // 開場動畫正在自己開相機，這時只更新 UI、不要搶方向盤
+    if (!intro.active) { syncCam(); render(); }
+  }
+
+  function toggleViewMode() {
+    view.mode = view.mode === '3d' ? '2d' : '3d';
+    saveView();
+    applyView();
+  }
+  // 一鍵回正：只還原角度與縮放，不動 2D/3D 模式與鎖定狀態。
+  // 鎖定時仍然可用——鎖定擋的是拖曳／滾輪這類「不小心改到」，不是使用者明確按下的動作。
+  function recenterView() {
+    if (view.mode !== '3d') return;
+    view.yaw = CAM_DEFAULT.yaw;
+    view.pitch = CAM_DEFAULT.pitch;
+    view.dist = CAM_DEFAULT.dist;
+    saveView();
+    applyView();
+  }
+  function toggleViewLock() {
+    if (view.mode !== '3d') return;
+    view.locked = !view.locked;
+    saveView();
+    applyView();
+  }
+
   // 世界座標 → 視空間；d 為深度
   const NEAR = 0.25;
   function toView(wx, wy, wz) {
@@ -839,17 +946,16 @@
   function endIntro() {
     if (!intro.active) return;
     intro.active = false;
-    cam.yaw = 0; cam.pitch = 0.52; cam.dist = 13.5;
     document.getElementById('intro-title').classList.remove('show', 'neon');
     try { localStorage.setItem(INTRO_KEY, '1'); } catch {}
-    render();
+    applyView();   // 落回使用者保存的視角（含 2D／鎖定狀態）並重繪
     setStatus('選擇模式開始對局');
     openModal('modal-setup');
   }
 
   /* ---------- 視角操作（拖曳/縮放/點擊） ---------- */
   const pointers = new Map();
-  let dragging = false, tapStart = null, pinchDist = 0;
+  let dragging = false, tapStart = null, pinchDist = 0, viewDirty = false;
 
   svg.addEventListener('pointerdown', (e) => {
     if (intro.active) { endIntro(); return; }
@@ -883,21 +989,25 @@
     if (pointers.size === 2) {
       const [a, b] = [...pointers.values()];
       const nd = Math.hypot(a.x - b.x, a.y - b.y);
-      if (pinchDist > 0) {
-        cam.dist = Math.min(30, Math.max(6, cam.dist * pinchDist / nd));
-        render();
+      if (pinchDist > 0 && canOrbit()) {
+        view.dist = view.dist * pinchDist / nd;
+        applyView();
+        viewDirty = true;
       }
       pinchDist = nd;
       return;
     }
     if (tapStart && Math.hypot(e.clientX - tapStart.x, e.clientY - tapStart.y) > 7) {
+      // dragging 旗標即使在鎖定／2D 也要立起來：它同時負責「這一下是拖曳不是點擊」，
+      // 否則手指滑過棋盤放開就會意外落子。
       dragging = true;
-      svg.classList.add('dragging');
+      if (canOrbit()) svg.classList.add('dragging');
     }
-    if (dragging) {
-      cam.yaw -= dx * 0.005;
-      cam.pitch = Math.min(1.35, Math.max(0.18, cam.pitch + dy * 0.004));
-      render();
+    if (dragging && canOrbit()) {
+      view.yaw -= dx * 0.005;
+      view.pitch = view.pitch + dy * 0.004;
+      applyView();
+      viewDirty = true;
     }
   });
 
@@ -911,6 +1021,8 @@
     if (!pointers.size) {
       dragging = false;
       svg.classList.remove('dragging');
+      // 手勢結束才寫 localStorage，拖曳過程不要每幀寫一次
+      if (viewDirty) { viewDirty = false; saveView(); }
     }
     tapStart = null;
   }
@@ -918,9 +1030,11 @@
   svg.addEventListener('pointercancel', endPointer);
 
   svg.addEventListener('wheel', (e) => {
+    if (!canOrbit()) return;   // 鎖定／2D 時不攔截滾輪，讓瀏覽器照常處理
     e.preventDefault();
-    cam.dist = Math.min(30, Math.max(6, cam.dist * (e.deltaY > 0 ? 1.08 : 0.93)));
-    render();
+    view.dist = view.dist * (e.deltaY > 0 ? 1.08 : 0.93);
+    applyView();
+    saveView();
   }, { passive: false });
 
   window.addEventListener('keydown', (e) => {
@@ -1185,6 +1299,9 @@
     sound.toggle();
     updateTopbar();
   });
+  document.getElementById('btn-view').addEventListener('click', toggleViewMode);
+  document.getElementById('btn-recenter').addEventListener('click', recenterView);
+  document.getElementById('btn-lock').addEventListener('click', toggleViewLock);
   document.getElementById('btn-fx').addEventListener('click', () => {
     fxOn = !fxOn;
     try { localStorage.setItem('gomoku3d-fx', fxOn ? '1' : '0'); } catch {}
@@ -1750,6 +1867,7 @@
   window.addEventListener('resize', resize);
   resize();
   updateTopbar(); // 讓特效/音效等開關按鈕一開始就反映狀態
+  applyView();    // 視角三顆鈕的文字/停用狀態同步保存的視角
   let introSeen = true;
   try { introSeen = !!localStorage.getItem(INTRO_KEY); } catch {}
   if (introSeen) {
@@ -1766,6 +1884,8 @@
     get netOpen() { return !!(net && net.open); },
     screenPt: (gx, gy) => screenPts[gy] && screenPts[gy][gx],
     cam,
+    view,
+    applyView,
     render,
     auto,
     intro,
