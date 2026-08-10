@@ -49,6 +49,28 @@
         const r = window.GomokuEngine.forbiddenReason(g.board, x, y);
         return r ? `禁手！黑棋不能下「${r}」` : null;
       },
+      // 教練標記：威脅點分層過濾（有連五級威脅時只顯示連五級，避免滿盤標記）
+      coachMarks(g) {
+        const listAll = window.GomokuEngine.hints(g);
+        const urgent = listAll.filter((h) => h.kind === 'win' || h.kind === 'block');
+        const strong = listAll.filter((h) => h.kind === 'attack' || h.kind === 'danger');
+        const weak = listAll.filter((h) => h.kind === 'three' || h.kind === 'watch');
+        const forb = listAll.filter((h) => h.kind === 'forbidden');
+        return (urgent.length ? urgent : (strong.length ? strong : weak)).concat(forb);
+      },
+      // 與 aiSearch 同形的分時分析介面（五子棋是同步的，一步就完成）
+      analyzeSearch(g) {
+        let result = null, done = false;
+        return {
+          step() {
+            if (!done) { result = window.GomokuEngine.analyzeMoves(g, { top: 30 }); done = true; }
+            return true;
+          },
+          result() { return result || []; },
+        };
+      },
+      coachText: '教練模式開啟：棋盤標出雙方威脅點',
+      heatText: 'AI 熱力圖：顏色越紅代表 AI 越想下該點（白環為首選）',
       levelDesc: {
         easy: '入門：新手級。偏重自己進攻、幾乎不防守，用「活三做活四」就能贏它。',
         medium: '進階：會擋你的活三、往後算一回合，一般玩家的對手。',
@@ -68,7 +90,7 @@
       stars: (n) => window.GoEngine.starPoints(n),
       features: {
         renju: false, auto: false, lessons: false, puzzles: false, openings: false,
-        online: false, coach: false, heat: false, hint: false, rank: false,
+        online: false, coach: true, heat: true, hint: true, rank: false,
         replay: true, pass: true, winLine: false,
       },
       newGame(o) { return window.GoEngine.createGame({ size: o.size }); },
@@ -85,6 +107,32 @@
         const r = window.GoEngine.legal(g, x, y);
         return r.ok ? null : r.reason;
       },
+      // 教練標記：叫吃層級的戰術（金＝可提子、粉紅＝我方剩一氣的子、紅＝逃氣點）
+      coachMarks(g) {
+        const Ego = window.GoEngine;
+        const me = g.current, opp = Ego.other(me);
+        const out = [];
+        for (const grp of Ego.groupsWithLiberties(g, opp, 1)) {
+          const c = Ego.idxToXY(g.size, grp.libs[0]);
+          if (Ego.legal(g, c.x, c.y).ok) out.push({ x: c.x, y: c.y, kind: 'win' });
+        }
+        for (const grp of Ego.groupsWithLiberties(g, me, 1)) {
+          for (const q of grp.stones) {
+            const c = Ego.idxToXY(g.size, q);
+            out.push({ x: c.x, y: c.y, kind: 'danger' });
+          }
+          const c = Ego.idxToXY(g.size, grp.libs[0]);
+          if (Ego.legal(g, c.x, c.y).ok) out.push({ x: c.x, y: c.y, kind: 'block' });
+        }
+        return out;
+      },
+      // 熱力圖：MCTS 要想一陣子，走分時介面（結果是各候選點的訪問數佔比）
+      analyzeSearch(g) {
+        const s = window.GoAI.createSearch(g, { level: 'medium', ms: 700, sims: 10000 });
+        return { step: (ms) => s.step(ms), result: () => s.analyze(30) };
+      },
+      coachText: '教練模式開啟：金＝可提對方、粉紅＝我方只剩一氣、紅＝逃氣點',
+      heatText: 'AI 熱力圖：顏色越紅代表 AI 越想下該點（白環為首選，需片刻計算）',
       levelDesc: {
         easy: '入門：只想幾百盤，會提子但看不遠，新手的對手。',
         medium: '進階：每手想上萬盤，會做眼、會斷、會收官。',
@@ -320,7 +368,7 @@
   let heatOn = false;     // AI 思考熱力圖
   let hintCell = null;    // 「提示」按鈕的建議點
   const coachCache = { key: '', list: [] };
-  const heatCache = { key: '', list: [] };
+  const heatCache = { key: '', list: [], pendingKey: '' };
   const replay = { active: false, index: 0, board: null }; // 棋譜回放
   const lessonState = { active: null, idx: -1, moves: 0, busyAI: false };
   let net = null;         // 線上連線（WebRTC）
@@ -648,18 +696,13 @@
       G.canMove(game) && !busy && !lessonState.busyAI &&
       (mode !== 'ai' || game.current !== aiSide);
     if (coachVisible) {
-      const key = mode + ':' + game.moves.length + ':' + game.current;
+      const key = G.id + ':' + mode + ':' + game.moves.length + ':' + game.current;
       if (coachCache.key !== key) {
         coachCache.key = key;
-        coachCache.list = E.hints(game);
+        coachCache.list = G.coachMarks(game);
       }
-      // 依急迫度過濾：有連五級威脅時只顯示連五級，避免滿盤標記
-      const listAll = coachCache.list;
-      const urgent = listAll.filter((h) => h.kind === 'win' || h.kind === 'block');
-      const strong = listAll.filter((h) => h.kind === 'attack' || h.kind === 'danger');
-      const weak = listAll.filter((h) => h.kind === 'three' || h.kind === 'watch');
-      const forb = listAll.filter((h) => h.kind === 'forbidden');
-      const shown = urgent.length ? urgent : (strong.length ? strong : weak);
+      const shown = coachCache.list.filter((h) => h.kind !== 'forbidden');
+      const forb = coachCache.list.filter((h) => h.kind === 'forbidden');
       const COACH_COLOR = {
         win: '#ffd166', block: '#e5484d', attack: '#ff9f43',
         danger: '#f06595', three: '#4dabf7', watch: '#74c0fc',
@@ -685,12 +728,24 @@
       G.canMove(game) && !busy && !lessonState.busyAI &&
       (mode !== 'ai' || game.current !== aiSide);
     if (heatVisible) {
-      const key = 'h:' + mode + ':' + game.moves.length + ':' + game.current;
-      if (heatCache.key !== key) {
-        heatCache.key = key;
-        heatCache.list = E.analyzeMoves(game, { top: 30 });
+      const key = 'h:' + G.id + ':' + mode + ':' + game.moves.length + ':' + game.current;
+      if (heatCache.key !== key && heatCache.pendingKey !== key) {
+        // 分時計算：render 會被視角拖曳高頻呼叫，pendingKey 保證同一局面只算一次；
+        // 算完之前這一手先不畫（畫舊局面的清單會標錯位置）
+        heatCache.pendingKey = key;
+        const search = G.analyzeSearch(game);
+        const startGame = game;
+        const tick = () => {
+          if (heatCache.pendingKey !== key || game !== startGame) return;   // 局面已變，放棄
+          if (!search.step(24)) { requestAnimationFrame(tick); return; }
+          heatCache.pendingKey = '';
+          heatCache.key = key;
+          heatCache.list = search.result();
+          render();
+        };
+        requestAnimationFrame(tick);
       }
-      const list = heatCache.list;
+      const list = heatCache.key === key ? heatCache.list : [];
       // 依深度排序（遠先畫），近的蓋在上面
       const drawn = list
         .map((m) => ({ m, p: project(gx2w(m.x), 0.03, gx2w(m.y)) }))
@@ -822,6 +877,7 @@
   }
 
   function afterMove() {
+    heatCache.pendingKey = '';   // 局面變了，進行中的熱力圖計算立即作廢
     render();
     setStatus(turnText());
     updateTopbar();
@@ -1660,28 +1716,37 @@
     coachCache.key = '';
     updateTopbar();
     render();
-    if (coachOn) setStatus('教練模式開啟：棋盤標出雙方威脅點');
+    if (coachOn) setStatus(G.coachText);
   });
   document.getElementById('btn-heat').addEventListener('click', () => {
     heatOn = !heatOn;
     heatCache.key = '';
     updateTopbar();
     render();
-    if (heatOn) setStatus('AI 熱力圖：顏色越紅代表 AI 越想下該點（白環為首選）');
+    if (heatOn) setStatus(G.heatText);
   });
   document.getElementById('btn-hint').addEventListener('click', () => {
-    if (game.winner || busy || replay.active || intro.active || lessonState.busyAI) return;
+    if (!G.canMove(game) || busy || replay.active || intro.active || lessonState.busyAI) return;
     if (mode === 'ai' && game.current === aiSide) return;
     if (mode === 'auto') return;
     setStatus('分析中…');
-    setTimeout(() => {
-      const mv = E.aiMove(game, { level: 'hard' });
-      if (mv) {
-        hintCell = mv;
-        render();
-        setStatus(mode === 'lesson' ? '金色標記是建議的下一手' : '提示：金色標記是建議的下一手');
+    // 分時搜尋（圍棋一手要想 1~2 秒）；記下起點，局面變了就丟棄結果
+    const search = G.aiSearch(game, { level: 'hard' });
+    const startGame = game, startLen = game.moves.length;
+    const tick = () => {
+      if (game !== startGame || game.moves.length !== startLen) return;
+      if (!search.step(24)) { requestAnimationFrame(tick); return; }
+      const mv = search.best();
+      if (!mv) return;
+      if (mv.pass) {
+        setStatus('提示：AI 建議虛手（找不到更有價值的一手）');
+        return;
       }
-    }, 30);
+      hintCell = mv;
+      render();
+      setStatus(mode === 'lesson' ? '金色標記是建議的下一手' : '提示：金色標記是建議的下一手');
+    };
+    requestAnimationFrame(tick);
   });
   document.getElementById('btn-sound').addEventListener('click', () => {
     sound.toggle();
