@@ -547,6 +547,112 @@
     };
   }
 
+  /* ---------- 死活判定（終局結算前的「誰是死子」） ----------
+     從目前盤面跑 N 盤模擬到底，統計每一點最後落在誰手裡。一塊棋若在多數
+     模擬中最後屬於對方，就判定為死子。
+     這件事機器不可能 100% 準——大龍互殺、雙活、盤角曲四都會判錯——所以門檻
+     刻意偏保守（要對方明顯佔優才判死），剩下的交給玩家手動修正。 */
+  function ownershipMap(game, opts) {
+    const o = opts || {};
+    const sims = Number.isFinite(o.sims) ? o.sims : 600;
+    const size = game.size, n = size * size;
+    const rootB = setFromGame(makeBoard(size), game);
+    const b = makeBoard(size);
+    const rng = makeRng(Number.isFinite(o.seed) ? o.seed : ((Date.now() ^ (Math.random() * 0xffffffff)) >>> 0));
+    const maxMoves = size * size * 2 + 40;
+    const ownB = new Int32Array(n), ownW = new Int32Array(n);
+    for (let i = 0; i < sims; i++) {
+      copyBoard(b, rootB);
+      // 交替先手：只從單一方開始會讓「誰先動手」系統性影響判定
+      playout(b, i % 2 ? BLACK : WHITE, game.komi, rng, maxMoves);
+      for (let p = 0; p < n; p++) {
+        const c = b.color[p];
+        if (c === BLACK) { ownB[p]++; continue; }
+        if (c === WHITE) { ownW[p]++; continue; }
+        let hasB = false, hasW = false;
+        const o2 = b.nb.o, s = b.nb.oStart[p], e = b.nb.oStart[p + 1];
+        for (let k = s; k < e; k++) {
+          const v = b.color[o2[k]];
+          if (v === BLACK) hasB = true; else if (v === WHITE) hasW = true;
+        }
+        if (hasB && !hasW) ownB[p]++;
+        else if (hasW && !hasB) ownW[p]++;
+      }
+    }
+    const rate = new Float32Array(n);       // +1 = 每盤都歸黑，-1 = 每盤都歸白
+    for (let p = 0; p < n; p++) rate[p] = (ownB[p] - ownW[p]) / sims;
+    return { rate, sims };
+  }
+
+  // 一塊棋的「氣」依連通空區分組，並標明該區是否被這塊棋完全包住（＝眼）
+  function eyeRegions(board, size, grp) {
+    const own = new Set(grp.stones);
+    const visited = new Set();
+    const regions = [];
+    for (const lib of grp.libs) {
+      if (visited.has(lib)) continue;
+      const points = [], stack = [lib];
+      visited.add(lib);
+      let enclosed = true;
+      while (stack.length) {
+        const q = stack.pop();
+        points.push(q);
+        const qx = q % size, qy = (q - qx) / size;
+        Go.forEachNbr(size, qx, qy, (nx, ny) => {
+          const np = ny * size + nx;
+          if (board[ny][nx] === EMPTY) {
+            if (!visited.has(np)) { visited.add(np); stack.push(np); }
+          } else if (!own.has(np)) enclosed = false;
+        });
+      }
+      regions.push({ points, enclosed });
+    }
+    return regions;
+  }
+
+  // 實測：兩眼活棋的擁有率穩定在 1.00、無眼死子在 0.00，但「只有一個眼」的死棋
+  // （0.35~0.57）與「外圍還有大量單官」的活棋（0.58~0.75）在數值上分不開。
+  // 所以中間地帶交給兩條可證明的硬規則接管，機率只負責兩端。
+  const DEAD_THRESHOLD = 0.4;
+  function groupVerdict(board, size, grp, own, thr) {
+    const regions = eyeRegions(board, size, grp);
+    const eyes = regions.filter((r) => r.enclosed).length;
+    // 兩個真眼 → 無條件活，機率再低也不判死（誤判活棋是最糟的錯）
+    if (eyes >= 2) return { dead: false, why: 'two-eyes' };
+    // 全部的氣都在同一個被自己包住、且不超過 3 點的空區 → 必死
+    // （對方點在要點上，1~3 點的眼位做不出兩個眼）
+    if (regions.length === 1 && regions[0].enclosed && regions[0].points.length <= 3) {
+      return { dead: true, why: 'one-small-eye' };
+    }
+    return { dead: own < thr, why: 'monte-carlo' };
+  }
+
+  function guessDead(game, opts) {
+    const o = opts || {};
+    const size = game.size;
+    const map = ownershipMap(game, o);
+    const thr = Number.isFinite(o.threshold) ? o.threshold : DEAD_THRESHOLD;
+    const dead = new Set();
+    const groups = [];
+    const seen = new Uint8Array(size * size);
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const c = game.board[y][x];
+        if (c === EMPTY) continue;
+        const p = y * size + x;
+        if (seen[p]) continue;
+        const grp = Go.groupAt(game.board, size, x, y);
+        let sum = 0;
+        for (const q of grp.stones) { seen[q] = 1; sum += (c === BLACK ? map.rate[q] : -map.rate[q]); }
+        const own = (sum / grp.stones.length + 1) / 2;   // 0~1：這塊最後仍屬於自己的比例
+        const v = groupVerdict(game.board, size, grp, own, thr);
+        groups.push({ color: c, stones: grp.stones, own, dead: v.dead, why: v.why });
+        if (v.dead) for (const q of grp.stones) dead.add(q);
+      }
+    }
+    return { dead, groups, rate: map.rate, sims: map.sims };
+  }
+
   /* ---------- 對外 API（與 GomokuEngine 同形） ---------- */
   // 回傳 { x, y } 或 { pass: true }；對局已結束回傳 null
   function aiMove(game, opts) {
@@ -572,8 +678,9 @@
   }
 
   return {
-    AI_LEVELS, PASS,
+    AI_LEVELS, PASS, DEAD_THRESHOLD,
     createSearch, aiMove, hints, analyzeMoves,
+    guessDead, ownershipMap, eyeRegions,
     // 內部零件（測試與任務 3 的死活判定要用）
     _internal: {
       makeBoard, clearBoard, copyBoard, setFromGame, isLegal, isTrueEye,

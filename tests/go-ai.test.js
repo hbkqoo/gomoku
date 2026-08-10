@@ -316,6 +316,154 @@ console.log('熱力圖與提示');
   assert(h && h.x === 2 && h.y === 6, `提示會指出勝負關鍵的提子（實得 ${JSON.stringify(h)}）`);
 }
 
+/* ---- 死活判定 ---- */
+console.log('死活判定');
+{
+  // 手排死活形很容易排錯（實作時連續排錯四次：0 氣的棋塊、眼位裡有敵子、
+  // 只留 3 個單官讓大龍在理論上真的變成死棋）。所以建盤工具自己會驗：
+  // 每塊都要有氣，而且實際數出「完全被該塊包住的空區」個數當眼數。
+  const S = 9;
+  const DAME = [];                                   // 下方兩列留空，當作實戰規模的單官
+  for (let x = 0; x < S; x++) { DAME.push([x, 7]); DAME.push([x, 8]); }
+
+  function build(white, empty) {
+    const g = Go.createGame({ size: S });
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) g.board[y][x] = Go.BLACK;
+    for (const [x, y] of white) g.board[y][x] = Go.WHITE;
+    for (const [x, y] of empty.concat(DAME)) g.board[y][x] = Go.EMPTY;
+    return g;
+  }
+  function groupsOf(g) {
+    const out = [], seen = new Set();
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+      if (g.board[y][x] === Go.EMPTY) continue;
+      const p = y * S + x;
+      if (seen.has(p)) continue;
+      const grp = Go.groupAt(g.board, S, x, y);
+      for (const q of grp.stones) seen.add(q);
+      out.push(grp);
+    }
+    return out;
+  }
+  const eyesOf = (g, grp) => AI.eyeRegions
+    ? AI.eyeRegions(g.board, S, grp).filter((r) => r.enclosed).length
+    : -1;
+  function validBoard(g) {
+    return groupsOf(g).every((grp) => grp.libs.length > 0);
+  }
+  function groupAtOf(res, x, y) {
+    const p = y * S + x;
+    return res.groups.find((gr) => gr.stones.indexOf(p) >= 0);
+  }
+
+  // eyeRegions 本身
+  {
+    const g = build([[1, 0], [3, 0], [0, 1], [1, 1], [2, 1], [3, 1]], [[0, 0], [2, 0]]);
+    assert(validBoard(g), '（前置）兩眼局面是合法盤面');
+    const w = Go.groupAt(g.board, S, 1, 1);
+    const regions = AI.eyeRegions(g.board, S, w);
+    eq(regions.length, 2, 'eyeRegions 找出兩個氣的區塊');
+    eq(regions.filter((r) => r.enclosed).length, 2, '兩個都是被自己完全包住的眼');
+    eq(eyesOf(g, w), 2, '白棋確實有兩個眼');
+    const r = AI.guessDead(g, { sims: 400, seed: 42 });
+    const wg = groupAtOf(r, 1, 1);
+    assert(wg && !wg.dead, '兩眼活棋不判死');
+    eq(wg.why, 'two-eyes', '走的是「兩眼無條件活」這條硬規則');
+    const bg = groupAtOf(r, 5, 0);
+    assert(bg && !bg.dead, '外圍大龍不判死');
+  }
+  // 「氣」與「眼」的分別：鄰接敵子的氣不是眼。
+  // 少了這個檢查，一塊只有 3 口氣的活棋會被誤判成「只有一個小眼位」而判死。
+  {
+    const g = Go.createGame({ size: S });
+    g.board[4][4] = Go.WHITE;
+    g.board[4][3] = Go.BLACK;
+    const w = Go.groupAt(g.board, S, 4, 4);
+    eq(w.libs.length, 3, '（前置）白單子有 3 口氣');
+    const regions = AI.eyeRegions(g.board, S, w);
+    eq(regions.length, 1, '3 口氣連成同一個空區');
+    eq(regions.filter((r2) => r2.enclosed).length, 0, '該空區鄰接黑子，不算被自己包住的眼');
+    const r = AI.guessDead(g, { sims: 300, seed: 42 });
+    const wg = groupAtOf(r, 4, 4);
+    eq(wg.why, 'monte-carlo', '不符合任何硬規則 → 交給機率判定');
+  }
+  // 三格直眼：機率判不出來，靠硬規則
+  {
+    const g = build([[3, 0], [0, 1], [1, 1], [2, 1], [3, 1]], [[0, 0], [1, 0], [2, 0]]);
+    assert(validBoard(g), '（前置）三格直眼是合法盤面');
+    const w = Go.groupAt(g.board, S, 1, 1);
+    eq(eyesOf(g, w), 1, '（前置）白棋只有一個眼位');
+    const r = AI.guessDead(g, { sims: 400, seed: 42 });
+    const wg = groupAtOf(r, 1, 1);
+    assert(wg && wg.dead, '只有一個三格眼位 → 判死');
+    eq(wg.why, 'one-small-eye', '走的是「單一小眼位必死」這條硬規則');
+    assert(wg.own > AI.DEAD_THRESHOLD, `（記錄）純機率判不出這一形：存活率 ${wg.own.toFixed(2)} 高於門檻`);
+    assert(!groupAtOf(r, 5, 0).dead, '外圍大龍不判死');
+  }
+  // 一眼的環：機率就判得出來
+  {
+    const g = build([[3, 3], [4, 3], [5, 3], [3, 4], [5, 4], [3, 5], [4, 5], [5, 5]], [[4, 4]]);
+    assert(validBoard(g), '（前置）單眼環是合法盤面');
+    eq(eyesOf(g, Go.groupAt(g.board, S, 3, 3)), 1, '（前置）白環只有一個眼');
+    const r = AI.guessDead(g, { sims: 600, seed: 42 });
+    const wg = groupAtOf(r, 3, 3);
+    assert(wg && wg.dead, `單眼的棋塊判死（存活率 ${wg.own.toFixed(2)}）`);
+    assert(!groupAtOf(r, 0, 0).dead, '包圍它的黑棋不判死');
+  }
+  // 孤立死子
+  {
+    const g = build([[4, 4]], [[4, 3]]);
+    assert(validBoard(g), '（前置）孤子局面是合法盤面');
+    const r = AI.guessDead(g, { sims: 600, seed: 42 });
+    const wg = groupAtOf(r, 4, 4);
+    assert(wg && wg.dead, `陷在對方地裡的孤子判死（存活率 ${wg.own.toFixed(2)}）`);
+    assert(r.dead.has(Go.xyToIdx(S, 4, 4)), 'dead 集合含該子的座標');
+  }
+  // 對稱局面：雙方都活
+  {
+    const g = Go.createGame({ size: S });
+    for (let y = 0; y < S; y++) { g.board[y][3] = Go.BLACK; g.board[y][5] = Go.WHITE; }
+    const r = AI.guessDead(g, { sims: 600, seed: 42 });
+    eq(r.dead.size, 0, '各佔一半的局面沒有死子');
+    eq(r.groups.length, 2, '認出兩塊棋');
+  }
+  {
+    const r = AI.guessDead(Go.createGame({ size: S }), { sims: 200, seed: 42 });
+    eq(r.dead.size, 0, '空盤沒有死子');
+    eq(r.groups.length, 0, '空盤沒有棋塊');
+  }
+  // 決定性
+  {
+    const g = build([[4, 4]], [[4, 3]]);
+    const a = AI.guessDead(g, { sims: 400, seed: 7 });
+    const b = AI.guessDead(g, { sims: 400, seed: 7 });
+    assert(a.dead.size === b.dead.size && [...a.dead].every((p) => b.dead.has(p)),
+      '同一個種子得到同樣的死活判定');
+  }
+  // 與結算串起來
+  {
+    const g = build([[4, 4]], [[4, 3]]);
+    Go.pass(g); Go.pass(g);
+    eq(g.phase, 'scoring', '（前置）已進入確認死子階段');
+    const r = AI.guessDead(g, { sims: 600, seed: 42 });
+    const before = Go.score(g, []);
+    const after = Go.score(g, r.dead);
+    assert(after.black > before.black, '把死子標掉之後黑方分數變高');
+    eq(after.deadWhite, 1, '結算回報 1 顆死掉的白子');
+    Go.finalize(g, r.dead);
+    eq(g.winner, Go.BLACK, '收局判黑勝');
+  }
+  // 效能：這是按下「結束對局」時要跑的，不能讓人等
+  {
+    const g = Go.createGame({ size: 19 });
+    for (let y = 0; y < 19; y++) { g.board[y][8] = Go.BLACK; g.board[y][10] = Go.WHITE; }
+    const t0 = Date.now();
+    AI.guessDead(g, { sims: 600, seed: 7 });
+    const ms = Date.now() - t0;
+    assert(ms < 500, `19 路 600 盤判死夠快（${ms}ms）`);
+  }
+}
+
 /* ---- 分時搜尋（UI 不凍結所需） ---- */
 console.log('分時搜尋');
 {
