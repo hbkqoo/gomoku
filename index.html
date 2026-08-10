@@ -20,7 +20,7 @@
 <meta name="twitter:title" content="3D 棋弈 — 五子棋 × 圍棋">
 <meta name="twitter:description" content="一站兩種棋：五子棋與圍棋（9／13／19 路）。電腦對手、教學、謎題、定式、線上對戰，免安裝、手機也能玩。">
 <meta name="twitter:image" content="https://hbkqoo.github.io/gomoku/og-image.png">
-<link rel="stylesheet" href="style.css?v=14">
+<link rel="stylesheet" href="style.css?v=15">
 </head>
 <body>
 <div id="app">
@@ -324,6 +324,7 @@
       <div id="sc-detail"></div>
       <div class="row">
         <button id="btn-score-close">關閉</button>
+        <button id="btn-score-sign" style="display:none">簽名上榜</button>
         <button class="primary" id="btn-score-new">再來一局</button>
       </div>
     </div>
@@ -332,7 +333,7 @@
   <!-- 排行榜 -->
   <div class="modal" id="modal-rank">
     <div class="panel wide">
-      <h2>排行榜</h2>
+      <h2 id="rank-title">排行榜</h2>
       <div id="rank-list"></div>
       <div class="row">
         <button id="btn-rank-clear">清空紀錄</button>
@@ -341,13 +342,13 @@
     </div>
   </div>
 </div>
-<script src="engine.js?v=14"></script>
-<script src="go.js?v=14"></script>
-<script src="go-ai.js?v=14"></script>
-<script src="lessons.js?v=14"></script>
-<script src="openings.js?v=14"></script>
-<script src="puzzles.js?v=14"></script>
-<script src="online.js?v=14"></script>
-<script src="main.js?v=14"></script>
+<script src="engine.js?v=15"></script>
+<script src="go.js?v=15"></script>
+<script src="go-ai.js?v=15"></script>
+<script src="lessons.js?v=15"></script>
+<script src="openings.js?v=15"></script>
+<script src="puzzles.js?v=15"></script>
+<script src="online.js?v=15"></script>
+<script src="main.js?v=15"></script>
 </body>
 </html>

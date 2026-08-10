@@ -69,6 +69,13 @@
           result() { return result || []; },
         };
       },
+      rankKey: 'gomoku3d-rank',   // 沿用舊鍵，既有紀錄不會消失
+      winTitle(g) { return `${g.winner === 1 ? '黑' : '白'}棋獲勝！`; },
+      rankEntry() { return {}; },
+      rankMeta(r, esc, dur) {
+        return `${r.vsAI ? '勝過電腦' : '雙人對戰'} · ${esc(String(r.moves))} 手 · ${dur(r.ms)} · ${esc(String(r.date))}`;
+      },
+      rankSort(a, b) { return (b.vsAI - a.vsAI) || (a.moves - b.moves) || (a.ms - b.ms); },
       coachText: '教練模式開啟：棋盤標出雙方威脅點',
       heatText: 'AI 熱力圖：顏色越紅代表 AI 越想下該點（白環為首選）',
       levelDesc: {
@@ -90,7 +97,7 @@
       stars: (n) => window.GoEngine.starPoints(n),
       features: {
         renju: false, auto: false, lessons: false, puzzles: false, openings: false,
-        online: false, coach: true, heat: true, hint: true, rank: false,
+        online: false, coach: true, heat: true, hint: true, rank: true,
         replay: true, pass: true, winLine: false,
       },
       newGame(o) { return window.GoEngine.createGame({ size: o.size }); },
@@ -130,6 +137,27 @@
       analyzeSearch(g) {
         const s = window.GoAI.createSearch(g, { level: 'medium', ms: 700, sims: 10000 });
         return { step: (ms) => s.step(ms), result: () => s.analyze(30) };
+      },
+      rankKey: 'go3d-rank',       // 圍棋另存一份榜（盤面大小不同，成績不能混）
+      winTitle(g) {
+        const c = g.winner === 1 ? '黑' : '白';
+        if (g.reason === 'resign') return `${c}棋獲勝（對手認輸）！`;
+        return g.result ? `${c}棋勝 ${Math.abs(g.result.diff)} 目！` : `${c}棋獲勝！`;
+      },
+      rankEntry(g) {
+        return {
+          size: g.size,
+          margin: g.reason === 'resign' ? 'R' : (g.result ? Math.abs(g.result.diff) : 0),
+        };
+      },
+      rankMeta(r, esc, dur) {
+        const res = r.margin === 'R' ? '中盤勝' : `勝 ${esc(String(r.margin))} 目`;
+        return `${r.vsAI ? '勝過電腦' : '雙人對戰'} · ${esc(String(r.size))} 路 · ${res} · ${dur(r.ms)} · ${esc(String(r.date))}`;
+      },
+      // 中盤勝（對手認輸）視為最大勝差；同為數子勝則目差大者在前
+      rankSort(a, b) {
+        const m = (r) => (r.margin === 'R' ? Infinity : r.margin || 0);
+        return (b.vsAI - a.vsAI) || ((b.size || 0) - (a.size || 0)) || (m(b) - m(a)) || (a.ms - b.ms);
       },
       coachText: '教練模式開啟：金＝可提對方、粉紅＝我方只剩一氣、紅＝逃氣點',
       heatText: 'AI 熱力圖：顏色越紅代表 AI 越想下該點（白環為首選，需片刻計算）',
@@ -1017,9 +1045,17 @@
         `<p class="hint-text">中國規則數子：活子 ＋ 己方單獨圍住的空點。單官 ${r.dame} 點雙方都不計，` +
         `死子 黑 ${r.deadBlack}／白 ${r.deadWhite} 已從盤上扣除。</p>`;
     }
+    // 玩家獲勝且尚未上榜 → 顯示「簽名上榜」入口
+    const humanWon = game.winner > 0 && (mode !== 'ai' || game.winner === humanSide);
+    document.getElementById('btn-score-sign').style.display =
+      (G.features.rank && humanWon && !recorded) ? '' : 'none';
     openModal('modal-score');
   }
 
+  document.getElementById('btn-score-sign').addEventListener('click', () => {
+    closeModal('modal-score');
+    openWinModal();
+  });
   document.getElementById('btn-pass').addEventListener('click', doPass);
   document.getElementById('btn-resign').addEventListener('click', doResign);
   document.getElementById('btn-score-done').addEventListener('click', finishScoring);
@@ -1453,17 +1489,15 @@
   });
 
   /* ---------- 排行榜 ---------- */
-  const RANK_KEY = 'gomoku3d-rank';
-
   const RANK_MAX = 50;
   function loadRank() {
     try {
-      const data = JSON.parse(localStorage.getItem(RANK_KEY));
+      const data = JSON.parse(localStorage.getItem(G.rankKey));
       return Array.isArray(data) ? data.slice(0, RANK_MAX) : [];
     } catch { return []; }
   }
   function saveRank(list) {
-    try { localStorage.setItem(RANK_KEY, JSON.stringify(list.slice(0, RANK_MAX))); } catch {}
+    try { localStorage.setItem(G.rankKey, JSON.stringify(list.slice(0, RANK_MAX))); } catch {}
   }
 
   function fmtDur(ms) {
@@ -1484,6 +1518,8 @@
   function renderRank() {
     const list = loadRank();
     const el = document.getElementById('rank-list');
+    const title = document.getElementById('rank-title');
+    if (title) title.textContent = `排行榜 — ${G.label}`;
     if (!list.length) {
       el.innerHTML = '<div class="rank-empty">尚無紀錄 — 贏一局來簽名吧！</div>';
       return;
@@ -1494,7 +1530,7 @@
           <span class="no">${i + 1}</span>
           <span class="who">${escapeHtml(r.name)}（${escapeHtml(String(r.side))}棋）</span>
           ${r.sig && r.sig.length ? sigSvg(r.sig) : '<span></span>'}
-          <span class="meta">${r.vsAI ? '勝過電腦' : '雙人對戰'} · ${escapeHtml(String(r.moves))} 手 · ${fmtDur(r.ms)} · ${escapeHtml(String(r.date))}</span>
+          <span class="meta">${G.rankMeta(r, escapeHtml, fmtDur)}</span>
         </div>`)
       .join('');
   }
@@ -1539,9 +1575,8 @@
 
   function openWinModal() {
     const humanWon = mode === 'pvp' || game.winner === humanSide;
-    const c = game.winner === E.BLACK ? '黑' : '白';
     document.getElementById('win-title').textContent =
-      humanWon ? `${c}棋獲勝！` : '電腦獲勝！';
+      humanWon ? G.winTitle(game) : '電腦獲勝！';
     document.getElementById('win-detail').textContent = humanWon
       ? `共 ${game.moves.length} 手 · 用時 ${fmtDur(Date.now() - startTime)}，簽名留下你的戰績吧！`
       : `共 ${game.moves.length} 手。悔棋可以回到落敗前，再試一次！`;
@@ -1557,7 +1592,7 @@
   document.getElementById('btn-save').addEventListener('click', () => {
     const name = document.getElementById('win-name').value.trim() || '無名氏';
     const list = loadRank();
-    list.push({
+    list.push(Object.assign({
       name,
       sig: sigStrokes.filter((s) => s.length >= 2),
       side: game.winner === E.BLACK ? '黑' : '白',
@@ -1565,8 +1600,8 @@
       moves: game.moves.length,
       ms: Date.now() - startTime,
       date: new Date().toLocaleDateString('zh-TW'),
-    });
-    list.sort((a, b) => (b.vsAI - a.vsAI) || (a.moves - b.moves) || (a.ms - b.ms));
+    }, G.rankEntry(game)));
+    list.sort(G.rankSort);
     saveRank(list);
     recorded = true;
     closeModal('modal-win');
