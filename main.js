@@ -70,6 +70,30 @@
         };
       },
       rankKey: 'gomoku3d-rank',   // 沿用舊鍵，既有紀錄不會消失
+      // 教學協定：judge 用 forcedLoss 泛用搜尋（「這一手之後對手必須仍是必敗」）
+      lessonAdapter: {
+        doneKey: 'gomoku3d-lessons-done',
+        list() { return window.GomokuLessons || []; },
+        tips() { return (window.GomokuLessons || {}).tips || []; },
+        intro: '看懂這幾招，新手也能贏。想動手練就切到「動手練習」。',
+        drillIntro: '從殘局中找出致勝下法。下對了對手會全力防守，下錯了會退回讓你重試，卡關可按「提示」。',
+        setup(L) {
+          const g = window.GomokuEngine.createGame();
+          for (const [x, y] of L.setup) window.GomokuEngine.place(g, x, y);
+          return g;
+        },
+        judge(L, g, moves) {
+          if (g.winner === 1) return { r: 'win' };
+          const still = window.GomokuEngine.forcedLoss(g, L.checkDepth);
+          if (!still) return { r: 'fail', text: '這一手讓必勝機會溜走了，退回重試（可按「提示」）' };
+          if (moves > L.maxMoves) return { r: 'fail', text: '超過本關步數上限了，退回重試' };
+          return { r: 'continue' };
+        },
+        reply(L, g) { return window.GomokuEngine.aiMove(g, { level: 'hard' }); },
+        afterReply(L, g) { return g.winner === 1 ? { r: 'win' } : { r: 'ok' }; },
+        hint(L, g) { return window.GomokuEngine.aiMove(g, { level: 'hard' }); },
+        replyText: '對手防守中…',
+      },
       winTitle(g) { return `${g.winner === 1 ? '黑' : '白'}棋獲勝！`; },
       rankEntry() { return {}; },
       rankMeta(r, esc, dur) {
@@ -96,8 +120,8 @@
       defaultSize: 19,
       stars: (n) => window.GoEngine.starPoints(n),
       features: {
-        renju: false, auto: false, lessons: false, puzzles: false, openings: false,
-        online: false, coach: true, heat: true, hint: true, rank: true,
+        renju: false, auto: false, lessons: true, puzzles: false, openings: false,
+        online: false, coach: true, heat: true, hint: true, rank: true, 
         replay: true, pass: true, winLine: false,
       },
       newGame(o) { return window.GoEngine.createGame({ size: o.size }); },
@@ -139,6 +163,20 @@
         return { step: (ms) => s.step(ms), result: () => s.analyze(30) };
       },
       rankKey: 'go3d-rank',       // 圍棋另存一份榜（盤面大小不同，成績不能混）
+      // 教學協定：每關自帶劇本（judge/reply/afterReply/hint），見 go-lessons.js
+      lessonAdapter: {
+        doneKey: 'go3d-lessons-done',
+        list() { return window.GoLessons || []; },
+        tips() { return (window.GoLessons || {}).tips || []; },
+        intro: '記住這幾件事，就能開始下圍棋了。想動手練就切到「動手練習」。',
+        drillIntro: '每一關練一個核心規則（提子、逃叫吃、做眼、打劫、征子）。下錯會退回讓你重試，卡關可按「提示」。',
+        setup(L) { return L.setup(); },
+        judge(L, g, moves) { return L.judge(g, moves); },
+        reply(L, g) { return L.reply ? L.reply(g) : null; },
+        afterReply(L, g) { return L.afterReply ? L.afterReply(g) : { r: 'ok' }; },
+        hint(L, g, moves) { return L.hint(g, moves); },
+        replyText: '白棋回應中…',
+      },
       winTitle(g) {
         const c = g.winner === 1 ? '黑' : '白';
         if (g.reason === 'resign') return `${c}棋獲勝（對手認輸）！`;
@@ -401,7 +439,7 @@
   const lessonState = { active: null, idx: -1, moves: 0, busyAI: false };
   let net = null;         // 線上連線（WebRTC）
   let mySide = E.BLACK;   // 線上對戰中我方執色
-  const lessons = typeof GomokuLessons !== 'undefined' ? GomokuLessons : [];
+  // 教學關卡改走 G.lessonAdapter（任務 8）——不再靜態綁定五子棋的關卡
 
   /* ---------- 落子/勝利特效 ---------- */
   let fxOn = true;        // 活潑特效開關
@@ -1764,6 +1802,12 @@
     if (!G.canMove(game) || busy || replay.active || intro.active || lessonState.busyAI) return;
     if (mode === 'ai' && game.current === aiSide) return;
     if (mode === 'auto') return;
+    if (mode === 'lesson' && lessonState.active) {
+      // 教學關的提示由關卡劇本給（正解），不跑泛用搜尋
+      const h = G.lessonAdapter.hint(lessonState.active, game, lessonState.moves);
+      if (h) { hintCell = h; render(); setStatus('金色標記是建議的下一手'); }
+      return;
+    }
     setStatus('分析中…');
     // 分時搜尋（圍棋一手要想 1~2 秒）；記下起點，局面變了就丟棄結果
     const search = G.aiSearch(game, { level: 'hard' });
@@ -1800,20 +1844,19 @@
   });
 
   /* ---------- 教學關卡 ---------- */
-  const LESSON_KEY = 'gomoku3d-lessons-done';
   function loadLessonDone() {
     try {
-      const d = JSON.parse(localStorage.getItem(LESSON_KEY));
+      const d = JSON.parse(localStorage.getItem(G.lessonAdapter.doneKey));
       return new Set(Array.isArray(d) ? d : []);
     } catch { return new Set(); }
   }
   function saveLessonDone(set) {
-    try { localStorage.setItem(LESSON_KEY, JSON.stringify([...set])); } catch {}
+    try { localStorage.setItem(G.lessonAdapter.doneKey, JSON.stringify([...set])); } catch {}
   }
 
   function renderLessonList() {
     const done = loadLessonDone();
-    document.getElementById('lesson-list').innerHTML = lessons
+    document.getElementById('lesson-list').innerHTML = G.lessonAdapter.list()
       .map((L, i) => `
         <button class="lesson-item${done.has(L.id) ? ' done' : ''}" data-i="${i}">
           <span class="lt">${done.has(L.id) ? '✓ ' : ''}${escapeHtml(L.subtitle)}｜${escapeHtml(L.title)}</span>
@@ -1824,9 +1867,9 @@
   }
 
   function renderTips() {
-    const tips = lessons.tips || [];
+    const tips = G.lessonAdapter.tips();
     document.getElementById('tips-pane').innerHTML =
-      '<p class="hint-text">看懂這幾招，新手也能贏。想動手練就切到「動手練習」。</p>' +
+      `<p class="hint-text">${G.lessonAdapter.intro}</p>` +
       tips.map((t, i) => `
         <div class="tip-card">
           <span class="tip-no">${i + 1}</span>
@@ -1850,19 +1893,20 @@
   }
 
   function startLesson(i) {
-    const L = lessons[i];
+    const L = G.lessonAdapter.list()[i];
     if (!L) return;
-    if (aiTimer) { clearTimeout(aiTimer); aiTimer = null; }
+    cancelAI();
     if (auto.timer) { clearTimeout(auto.timer); auto.timer = null; }
-    busy = false;
     mode = 'lesson';
     lessonState.idx = i;
     lessonState.active = L;
     lessonState.moves = 0;
     lessonState.busyAI = false;
     replay.active = false;
-    game = E.createGame();
-    for (const [x, y] of L.setup) E.place(game, x, y);
+    game = G.lessonAdapter.setup(L);
+    applyBoardSize(game.board.length);   // 圍棋教學固定 9 路，盤面與相機要跟著切
+    applyView();
+    lessonState.base = game.moves.length;  // 悔棋的底線（圍棋 setup 可能含真實落子）
     recorded = true; // 教學局不進排行榜
     hoverCell = null;
     hintCell = null;
@@ -1878,48 +1922,72 @@
   function lessonPlace(gx, gy) {
     if (lessonState.busyAI || !lessonState.active) return;
     const L = lessonState.active;
-    if (!E.place(game, gx, gy)) return;
+    const A = G.lessonAdapter;
+    if (!G.place(game, gx, gy)) {
+      // 圍棋的禁著（劫、自殺）要說明理由——打劫關就是靠這個教「不能立刻回提」
+      const why = G.illegalReason(game, gx, gy);
+      if (why) { sound.deny(); setStatus(why); }
+      return;
+    }
     sound.stone();
     fxAfterPlace();
     hoverCell = null;
     hintCell = null;
     lessonState.moves++;
     render();
-    if (game.winner === E.BLACK) return lessonComplete();
-    // 判題：這一手之後對手（白）必須仍是必敗，且未超過步數上限
-    const stillWinning = E.forcedLoss(game, L.checkDepth);
-    if (!stillWinning || lessonState.moves > L.maxMoves) {
+    const j = A.judge(L, game, lessonState.moves);
+    if (j.r === 'win') return lessonComplete();
+    if (j.r === 'fail') {
       sound.deny();
-      setStatus(stillWinning ? '超過本關步數上限了，退回重試' : '這一手讓必勝機會溜走了，退回重試（可按「提示」）');
+      setStatus(j.text || '這一手不對，退回重試（可按「提示」）');
       lessonState.busyAI = true;
       setTimeout(() => {
-        E.undo(game);
+        G.undo(game);
         lessonState.moves--;
         lessonState.busyAI = false;
         render();
       }, 1100);
       return;
     }
-    // 對手全力防守
+    // 對手照劇本（圍棋）或全力防守（五子棋）回應
     lessonState.busyAI = true;
-    setStatus('對手防守中…');
+    setStatus(A.replyText);
     setTimeout(() => {
-      const mv = E.aiMove(game, { level: 'hard' });
-      if (mv) { E.place(game, mv.x, mv.y); sound.stone(); fxAfterPlace(); }
+      const mv = A.reply(L, game);
+      if (mv && !mv.pass) { G.place(game, mv.x, mv.y); sound.stone(); fxAfterPlace(); }
+      else if (mv && mv.pass && E.pass) E.pass(game);
       lessonState.busyAI = false;
       render();
-      if (game.winner === E.BLACK) return lessonComplete();
+      const a = A.afterReply(L, game);
+      if (a.r === 'win') return lessonComplete();
+      if (a.r === 'fail') {
+        // 征子關：錯手要等白逃出後才看得出來，退回時連白的回應一起退
+        sound.deny();
+        setStatus(a.text || '退回重試');
+        lessonState.busyAI = true;
+        setTimeout(() => {
+          G.undo(game);
+          G.undo(game);
+          lessonState.moves--;
+          lessonState.busyAI = false;
+          render();
+          lessonStatus();
+        }, 1400);
+        return;
+      }
       lessonStatus();
     }, 480);
   }
 
+
+
   function lessonUndo() {
     if (lessonState.busyAI || !lessonState.active) return;
-    const base = lessonState.active.setup.length;
-    // 退回到玩家回合（一次退掉白的回應與玩家的一手）
-    while (game.moves.length > base && game.current !== E.BLACK) E.undo(game);
+    const base = lessonState.base || 0;
+    // 退回到玩家回合（一次退掉對手的回應與玩家的一手）
+    while (game.moves.length > base && game.current !== E.BLACK) G.undo(game);
     if (game.moves.length > base) {
-      E.undo(game);
+      G.undo(game);
       lessonState.moves = Math.max(0, lessonState.moves - 1);
     }
     hintCell = null;
@@ -1938,7 +2006,7 @@
     setStatus(`【${L.title}】過關！`);
     document.getElementById('ld-title').textContent = `過關！${L.title}`;
     document.getElementById('ld-text').textContent = L.explain;
-    document.getElementById('ld-next').style.display = lessonState.idx + 1 < lessons.length ? '' : 'none';
+    document.getElementById('ld-next').style.display = lessonState.idx + 1 < G.lessonAdapter.list().length ? '' : 'none';
     document.getElementById('ld-next').textContent = '下一關';
     document.getElementById('ld-list').textContent = '關卡列表';
     lessonState.completeKind = 'lesson';
@@ -1946,6 +2014,8 @@
   }
 
   document.getElementById('btn-lessons').addEventListener('click', () => {
+    document.getElementById('lessons-title').textContent = `${G.label}教學`;
+    document.getElementById('drill-intro').textContent = G.lessonAdapter.drillIntro;
     renderTips();
     renderLessonList();
     switchTeachTab('tips');

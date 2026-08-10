@@ -20,7 +20,7 @@
 <meta name="twitter:title" content="3D 棋弈 — 五子棋 × 圍棋">
 <meta name="twitter:description" content="一站兩種棋：五子棋與圍棋（9／13／19 路）。電腦對手、教學、謎題、定式、線上對戰，免安裝、手機也能玩。">
 <meta name="twitter:image" content="https://hbkqoo.github.io/gomoku/og-image.png">
-<link rel="stylesheet" href="style.css?v=15">
+<link rel="stylesheet" href="style.css?v=16">
 </head>
 <body>
 <div id="app">
@@ -209,14 +209,14 @@
   <!-- 教學關卡列表 -->
   <div class="modal" id="modal-lessons">
     <div class="panel wide">
-      <h2>五子棋教學</h2>
+      <h2 id="lessons-title">五子棋教學</h2>
       <div class="teach-tabs">
         <button class="teach-tab on" data-tab="tips">新手技巧</button>
         <button class="teach-tab" data-tab="drill">動手練習</button>
       </div>
       <div id="tips-pane"></div>
       <div id="drill-pane" style="display:none">
-        <p class="hint-text">從殘局中找出致勝下法。下對了對手會全力防守，下錯了會退回讓你重試，卡關可按「提示」。</p>
+        <p class="hint-text" id="drill-intro">從殘局中找出致勝下法。下對了對手會全力防守，下錯了會退回讓你重試，卡關可按「提示」。</p>
         <div id="lesson-list"></div>
       </div>
       <div class="row">
@@ -342,13 +342,14 @@
     </div>
   </div>
 </div>
-<script src="engine.js?v=15"></script>
-<script src="go.js?v=15"></script>
-<script src="go-ai.js?v=15"></script>
-<script src="lessons.js?v=15"></script>
-<script src="openings.js?v=15"></script>
-<script src="puzzles.js?v=15"></script>
-<script src="online.js?v=15"></script>
-<script src="main.js?v=15"></script>
+<script src="engine.js?v=16"></script>
+<script src="go.js?v=16"></script>
+<script src="go-ai.js?v=16"></script>
+<script src="go-lessons.js?v=16"></script>
+<script src="lessons.js?v=16"></script>
+<script src="openings.js?v=16"></script>
+<script src="puzzles.js?v=16"></script>
+<script src="online.js?v=16"></script>
+<script src="main.js?v=16"></script>
 </body>
 </html>
