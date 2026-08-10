@@ -562,6 +562,8 @@
           wy += flee.progress * 2.5;
           op = Math.max(0, 1 - flee.progress * 1.15);
         }
+        // 確認死子階段：被標成死的子畫得很淡，一眼看得出來哪些不算數
+        if (scoring.active && scoring.dead.has(s.gy * SIZE + s.gx)) op *= 0.28;
         if (op <= 0) return null;
         const c = project(wx, wy, wz);
         return c ? { ...s, c, op, wx, wz } : null;
@@ -605,6 +607,30 @@
 
     /* 特效層：勝利連線 */
     let fx = '';
+    /* 確認死子階段：在空點與死子的位置畫出地盤歸屬 */
+    if (scoring.active && scoring.result) {
+      const owner = scoring.result.owner;
+      let terr = '';
+      for (let gy = 0; gy < SIZE; gy++) {
+        for (let gx = 0; gx < SIZE; gx++) {
+          const p = gy * SIZE + gx;
+          const ow = owner[p];
+          if (!ow) continue;                                   // 單官不標
+          const isStone = game.board[gy][gx] !== E.EMPTY;
+          if (isStone && !scoring.dead.has(p)) continue;        // 活著的子本身不用標
+          const c = project(gx2w(gx), 0.06, gx2w(gy));
+          if (!c) continue;
+          const r = F * 0.10 / c.d;
+          const h = r * squash;
+          terr += `<rect x="${(c.x - r).toFixed(1)}" y="${(c.y - h).toFixed(1)}" ` +
+            `width="${(r * 2).toFixed(1)}" height="${(h * 2).toFixed(1)}" ` +
+            `fill="${ow === E.BLACK ? '#14141a' : '#f4f1e8'}" opacity=".82" ` +
+            `stroke="rgba(0,0,0,.4)" stroke-width="1"/>`;
+        }
+      }
+      fx += terr;
+    }
+
     if (G.features.winLine && game.winLine && !flee.active && (!replay.active || replay.index >= game.moves.length)) {
       const pts = game.winLine
         .map((c) => project(gx2w(c.x), STONE_H + 0.05, gx2w(c.y)))
@@ -779,6 +805,11 @@
 
   function updateTopbar() {
     applyFeatureVisibility();
+    const goCtrl = document.getElementById('go-ctrl');
+    goCtrl.classList.toggle('show', G.features.pass && !replay.active);
+    document.getElementById('btn-pass').disabled =
+      !G.canMove(game) || busy || scoring.active || (mode === 'ai' && game.current === aiSide);
+    document.getElementById('btn-resign').disabled = G.isOver(game);
     document.getElementById('btn-replay').style.display =
       (G.features.replay && G.isOver(game) && mode !== 'auto' && !replay.active && game.moves.length) ? '' : 'none';
     document.getElementById('replay-ctrl').classList.toggle('show', replay.active);
@@ -794,13 +825,154 @@
     render();
     setStatus(turnText());
     updateTopbar();
+    if (G.features.pass && game.phase === 'scoring' && !scoring.active) return enterScoring();
     if (G.isOver(game)) {
-      if (game.winner > 0) sound.win();
+      if (game.winner > 0 && G.features.winLine) sound.win();
       if (G.features.rank && mode !== 'auto' && mode !== 'lesson' && mode !== 'puzzle' && mode !== 'online' && game.winner > 0 && !recorded) setTimeout(openWinModal, 900);
       return;
     }
     scheduleAI();
   }
+
+  /* ---------- 圍棋終局：虛手 → 確認死子 → 數子 ----------
+     機器判死不可能 100% 準，所以這一階段的重點是「讓玩家能改」：
+     點任何一塊棋就切換它的死活，比分即時跟著變。 */
+  const scoring = { active: false, dead: new Set(), result: null };
+
+  function enterScoring() {
+    scoring.active = true;
+    scoring.dead = new Set();
+    scoring.result = null;
+    setStatus('雙方虛手 — 正在判斷死子…');
+    updateTopbar();
+    render();
+    // guessDead 要跑幾百盤模擬，丟到下一幀才跑，先讓「判斷中」畫得出來
+    requestAnimationFrame(() => {
+      if (!scoring.active) return;
+      try {
+        scoring.dead = window.GoAI.guessDead(game, { sims: 800 }).dead;
+      } catch { scoring.dead = new Set(); }
+      refreshScore();
+    });
+  }
+
+  function refreshScore() {
+    if (!scoring.active) return;
+    scoring.result = E.score(game, scoring.dead);
+    render();
+    updateScoreBar();
+    setStatus('確認死子：點棋子切換死活，確定後按「確認結算」');
+  }
+
+  function toggleDeadAt(gx, gy) {
+    if (!scoring.active || game.board[gy][gx] === E.EMPTY) return;
+    const grp = E.groupAt(game.board, SIZE, gx, gy);
+    const makeDead = !scoring.dead.has(grp.stones[0]);
+    for (const q of grp.stones) {
+      if (makeDead) scoring.dead.add(q); else scoring.dead.delete(q);
+    }
+    sound.stone();
+    refreshScore();
+  }
+
+  function updateScoreBar() {
+    const bar = document.getElementById('score-bar');
+    bar.classList.toggle('show', scoring.active && !!scoring.result);
+    if (!scoring.active || !scoring.result) return;
+    const r = scoring.result;
+    const lead = r.diff > 0 ? `黑領先 ${r.diff} 目`
+      : r.diff < 0 ? `白領先 ${-r.diff} 目` : '平手';
+    document.getElementById('score-text').textContent =
+      `黑 ${r.black}　白 ${r.white}（含貼目 ${r.komi}）　${lead}`;
+  }
+
+  function leaveScoring() {
+    scoring.active = false;
+    scoring.dead = new Set();
+    scoring.result = null;
+    updateScoreBar();
+  }
+
+  function finishScoring() {
+    if (!scoring.active) return;
+    const r = E.finalize(game, scoring.dead);
+    const dead = scoring.dead;
+    leaveScoring();
+    scoring.result = r;           // 收局後仍留著明細供顯示
+    scoring.dead = dead;
+    render();
+    setStatus(turnText());
+    updateTopbar();
+    sound.win();
+    showScoreModal(r);
+  }
+
+  function resumeFromScoring() {
+    if (!scoring.active) return;
+    E.resumePlay(game);
+    leaveScoring();
+    render();
+    setStatus(turnText());
+    updateTopbar();
+    scheduleAI();
+  }
+
+  function doPass() {
+    if (!G.features.pass || !G.canMove(game) || busy || replay.active || intro.active) return;
+    if (mode === 'ai' && game.current === aiSide) return;
+    E.pass(game);
+    hoverCell = null;
+    hintCell = null;
+    afterMove();
+  }
+
+  function doResign() {
+    if (!G.features.pass || G.isOver(game) || replay.active) return;
+    // 與電腦對戰時認輸的一定是玩家；雙人對戰時是當下輪到的一方
+    const side = mode === 'ai' ? humanSide : game.current;
+    const who = side === E.BLACK ? '黑棋' : '白棋';
+    if (!confirm(`確定${who}認輸嗎？`)) return;
+    cancelAI();
+    leaveScoring();
+    E.resign(game, side);
+    render();
+    setStatus(turnText());
+    updateTopbar();
+    showScoreModal(null);
+  }
+
+  function showScoreModal(r) {
+    const t = document.getElementById('sc-title');
+    const d = document.getElementById('sc-detail');
+    if (!r || game.reason === 'resign') {
+      t.textContent = `${game.winner === E.BLACK ? '黑棋' : '白棋'}獲勝`;
+      d.innerHTML = '<p>對手認輸，對局結束。</p>';
+    } else {
+      const w = r.winner === E.BLACK ? '黑棋' : r.winner === E.WHITE ? '白棋' : '';
+      t.textContent = r.winner === -1 ? '和局' : `${w}勝 ${Math.abs(r.diff)} 目`;
+      d.innerHTML =
+        '<table class="sc-table">' +
+        '<tr><th>項目</th><th>黑</th><th>白</th></tr>' +
+        `<tr><td>活子</td><td>${r.blackStones}</td><td>${r.whiteStones}</td></tr>` +
+        `<tr><td>圍地</td><td>${r.blackTerritory}</td><td>${r.whiteTerritory}</td></tr>` +
+        `<tr><td>貼目</td><td>—</td><td>${r.komi}</td></tr>` +
+        `<tr class="sum"><td>合計</td><td>${r.black}</td><td>${r.white}</td></tr>` +
+        '</table>' +
+        `<p class="hint-text">中國規則數子：活子 ＋ 己方單獨圍住的空點。單官 ${r.dame} 點雙方都不計，` +
+        `死子 黑 ${r.deadBlack}／白 ${r.deadWhite} 已從盤上扣除。</p>`;
+    }
+    openModal('modal-score');
+  }
+
+  document.getElementById('btn-pass').addEventListener('click', doPass);
+  document.getElementById('btn-resign').addEventListener('click', doResign);
+  document.getElementById('btn-score-done').addEventListener('click', finishScoring);
+  document.getElementById('btn-score-resume').addEventListener('click', resumeFromScoring);
+  document.getElementById('btn-score-close').addEventListener('click', () => closeModal('modal-score'));
+  document.getElementById('btn-score-new').addEventListener('click', () => {
+    closeModal('modal-score');
+    openModal('modal-setup');
+  });
 
   // 分時驅動 AI：每幀只算 28ms，讓瀏覽器有空重繪。
   // 圍棋的 MCTS 一手要想好幾秒，同步跑會把整個畫面凍住。
@@ -843,6 +1015,7 @@
   }
 
   function tryPlace(gx, gy) {
+    if (scoring.active) return toggleDeadAt(gx, gy);
     if (busy || !G.canMove(game) || mode === 'auto' || intro.active || replay.active) return;
     if (mode === 'online') return onlinePlace(gx, gy);
     if (mode === 'lesson' || mode === 'puzzle') return lessonPlace(gx, gy);
@@ -862,6 +1035,7 @@
   function doUndo() {
     if (replay.active) return exitReplay();
     cancelAI();
+    if (scoring.active) leaveScoring();   // 確認死子時悔棋 = 退回對局並收回上一手虛手
     if (mode === 'auto') {
       if (auto.timer) { clearTimeout(auto.timer); auto.timer = null; }
       auto.paused = true;
@@ -893,6 +1067,8 @@
     if (net) { try { net.close(); } catch {} net = null; } // 開始單機局即離線
     replay.active = false;
     lessonState.active = null;
+    leaveScoring();
+    closeModal('modal-score');
     game = G.newGame({ renju: renjuOn && mode !== 'auto', size: SIZE });
     applyBoardSize(game.board.length);   // 盤面大小以實際建出來的棋局為準
     applyView();                          // 相機距離隨盤面大小重算
@@ -2094,6 +2270,8 @@
     get game() { return game; },
     get mode() { return mode; },
     get gameId() { return G.id; },
+    scoring,
+    doPass, doResign, finishScoring, resumeFromScoring,
     get size() { return SIZE; },
     GAMES,
     applyGameConfig,

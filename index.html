@@ -20,7 +20,7 @@
 <meta name="twitter:title" content="3D 棋弈 — 五子棋 × 圍棋">
 <meta name="twitter:description" content="一站兩種棋：五子棋與圍棋（9／13／19 路）。電腦對手、教學、謎題、定式、線上對戰，免安裝、手機也能玩。">
 <meta name="twitter:image" content="https://hbkqoo.github.io/gomoku/og-image.png">
-<link rel="stylesheet" href="style.css?v=13">
+<link rel="stylesheet" href="style.css?v=14">
 </head>
 <body>
 <div id="app">
@@ -52,6 +52,10 @@
       <button id="btn-online">連線</button>
       <button id="btn-new">新對局</button>
       <button id="btn-undo">悔棋</button>
+      <span id="go-ctrl">
+        <button id="btn-pass" title="這一手不下（雙方連續虛手即進入結算）">虛手</button>
+        <button id="btn-resign" title="認輸，結束這一局">認輸</button>
+      </span>
       <button id="btn-rank">排行榜</button>
       <span class="btn-group">
         <button id="btn-view">2D 視角</button>
@@ -100,6 +104,11 @@
       <g id="layer-stones"></g>
       <g id="layer-fx"></g>
     </svg>
+    <div id="score-bar">
+      <span id="score-text"></span>
+      <button class="primary" id="btn-score-done">確認結算</button>
+      <button id="btn-score-resume">繼續下</button>
+    </div>
     <div id="hint">拖曳環顧四周 · 滾輪/雙指縮放 · 點擊交叉點落子</div>
     <div id="intro-title">
       <span>3D 五子棋</span>
@@ -308,6 +317,18 @@
     </div>
   </div>
 
+  <!-- 圍棋終局結算 -->
+  <div class="modal" id="modal-score">
+    <div class="panel">
+      <h2 id="sc-title">對局結束</h2>
+      <div id="sc-detail"></div>
+      <div class="row">
+        <button id="btn-score-close">關閉</button>
+        <button class="primary" id="btn-score-new">再來一局</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 排行榜 -->
   <div class="modal" id="modal-rank">
     <div class="panel wide">
@@ -320,13 +341,13 @@
     </div>
   </div>
 </div>
-<script src="engine.js?v=13"></script>
-<script src="go.js?v=13"></script>
-<script src="go-ai.js?v=13"></script>
-<script src="lessons.js?v=13"></script>
-<script src="openings.js?v=13"></script>
-<script src="puzzles.js?v=13"></script>
-<script src="online.js?v=13"></script>
-<script src="main.js?v=13"></script>
+<script src="engine.js?v=14"></script>
+<script src="go.js?v=14"></script>
+<script src="go-ai.js?v=14"></script>
+<script src="lessons.js?v=14"></script>
+<script src="openings.js?v=14"></script>
+<script src="puzzles.js?v=14"></script>
+<script src="online.js?v=14"></script>
+<script src="main.js?v=14"></script>
 </body>
 </html>

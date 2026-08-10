@@ -151,6 +151,39 @@ input[type=text]:focus { border-color: #d9b878; }
 .rank-empty { text-align: center; color: #8f9ab3; padding: 24px 0; }
 
 /* 觀戰控制 */
+/* 圍棋專屬：虛手 / 認輸 */
+#go-ctrl { display: none; gap: 8px; align-items: center; }
+#go-ctrl.show { display: inline-flex; }
+
+/* 確認死子階段的底部工具列 */
+#score-bar {
+  display: none;
+  position: absolute;
+  bottom: 42px;
+  left: 50%;
+  transform: translateX(-50%);
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  background: rgba(12, 15, 22, .92);
+  border: 1px solid #3a4560;
+  border-radius: 12px;
+  font-size: 14px;
+  max-width: 94vw;
+  flex-wrap: wrap;
+  justify-content: center;
+  z-index: 4;
+}
+#score-bar.show { display: flex; }
+#score-bar button { padding: 5px 12px; font-size: 13px; }
+#score-text { color: #d9b878; }
+
+/* 結算明細表 */
+.sc-table { width: 100%; border-collapse: collapse; margin: 6px 0 10px; }
+.sc-table th, .sc-table td { padding: 5px 8px; text-align: right; border-bottom: 1px solid #2a3245; }
+.sc-table th:first-child, .sc-table td:first-child { text-align: left; color: #9aa6bf; }
+.sc-table tr.sum td { font-weight: 700; color: #d9b878; border-bottom: none; }
+
 #auto-ctrl { display: none; align-items: center; gap: 8px; }
 #auto-ctrl.show { display: inline-flex; }
 
