@@ -1,11 +1,112 @@
-/* 3D 五子棋：SVG 透視渲染 + 第一人稱視角 + UI */
+/* 3D 棋弈（五子棋 × 圍棋）：SVG 透視渲染 + 第一人稱視角 + UI */
 (function () {
   'use strict';
-  const E = GomokuEngine;
-  const SIZE = E.SIZE, HALF = (SIZE - 1) / 2;
-  const BOARD_HALF = HALF + 1;          // 棋盤板面半寬
+
+  /* ---------- 棋種設定 ----------
+     整份 UI 只認 GAMES[id] 這張表，不認「五子棋」或「圍棋」。
+     新增第三種棋 ＝ 加一筆設定 ＋ 一個同形 API 的引擎。
+     兩個引擎的 EMPTY/BLACK/WHITE 都是 0/1/2，所以顏色常數可以共用。 */
+  const GAMES = {
+    gomoku: {
+      id: 'gomoku',
+      label: '五子棋',
+      heading: '3D 五子棋',
+      docTitle: '3D 五子棋 — 第一人稱對弈',
+      get engine() { return window.GomokuEngine; },
+      sizes: [15],
+      defaultSize: 15,
+      stars: () => [[3, 3], [11, 3], [7, 7], [3, 11], [11, 11]],
+      // 哪些功能對這個棋種有意義（沒有的按鈕會整顆隱藏）
+      features: {
+        renju: true, auto: true, lessons: true, puzzles: true, openings: true,
+        online: true, coach: true, heat: true, hint: true, rank: true,
+        replay: true, pass: false, winLine: true,
+      },
+      newGame(o) { return window.GomokuEngine.createGame({ renju: o.renju }); },
+      place(g, x, y) { return window.GomokuEngine.place(g, x, y); },
+      undo(g) { return window.GomokuEngine.undo(g); },
+      isOver(g) { return !!g.winner; },
+      canMove(g) { return !g.winner; },
+      // 同形的分時搜尋介面：五子棋是同步的，包成「一步就完成」
+      aiSearch(g, opts) {
+        let result = null, done = false;
+        return {
+          step() {
+            if (!done) { result = window.GomokuEngine.aiMove(g, opts); done = true; }
+            return true;
+          },
+          best() { return result; },
+        };
+      },
+      replayBoard(g, n) {
+        const b = Array.from({ length: g.board.length }, () => new Array(g.board.length).fill(0));
+        for (let k = 0; k < n; k++) { const m = g.moves[k]; b[m.y][m.x] = m.player; }
+        return b;
+      },
+      // 落子被拒時給玩家的理由（沒有理由就回 null，不出聲）
+      illegalReason(g, x, y) {
+        if (!g.renju || g.current !== 1) return null;
+        const r = window.GomokuEngine.forbiddenReason(g.board, x, y);
+        return r ? `禁手！黑棋不能下「${r}」` : null;
+      },
+      levelDesc: {
+        easy: '入門：新手級。偏重自己進攻、幾乎不防守，用「活三做活四」就能贏它。',
+        medium: '進階：會擋你的活三、往後算一回合，一般玩家的對手。',
+        hard: '困難：往後算兩三回合，看得到雙威脅組合、會設陷阱。',
+        master: '大師：更深更廣的搜尋（每手最多約 0.4 秒），全力求勝。',
+      },
+    },
+
+    go: {
+      id: 'go',
+      label: '圍棋',
+      heading: '3D 圍棋',
+      docTitle: '3D 圍棋 — 第一人稱對弈',
+      get engine() { return window.GoEngine; },
+      sizes: [9, 13, 19],
+      defaultSize: 19,
+      stars: (n) => window.GoEngine.starPoints(n),
+      features: {
+        renju: false, auto: false, lessons: false, puzzles: false, openings: false,
+        online: false, coach: false, heat: false, hint: false, rank: false,
+        replay: true, pass: true, winLine: false,
+      },
+      newGame(o) { return window.GoEngine.createGame({ size: o.size }); },
+      place(g, x, y) { return window.GoEngine.place(g, x, y); },
+      undo(g) { return window.GoEngine.undo(g); },
+      isOver(g) { return g.phase === 'over'; },
+      canMove(g) { return g.phase === 'play'; },
+      aiSearch(g, opts) {
+        const s = window.GoAI.createSearch(g, opts);
+        return { step: (ms) => s.step(ms), best: () => s.best() };
+      },
+      replayBoard(g, n) { return window.GoEngine.replayBoard(g, n); },
+      illegalReason(g, x, y) {
+        const r = window.GoEngine.legal(g, x, y);
+        return r.ok ? null : r.reason;
+      },
+      levelDesc: {
+        easy: '入門：只想幾百盤，會提子但看不遠，新手的對手。',
+        medium: '進階：每手想上萬盤，會做眼、會斷、會收官。',
+        hard: '困難：每手約 2 秒的深度搜尋，9 路上相當難纏。',
+        master: '大師：每手約 4 秒，全力求勝（19 路仍受限於純網頁的運算量）。',
+      },
+    },
+  };
+
+  let G = GAMES.gomoku;                 // 目前棋種設定
+  let E = G.engine;                     // 目前引擎（與 G 同步切換）
+  let SIZE = G.defaultSize;             // 盤面路數（圍棋會變）
+  let HALF = (SIZE - 1) / 2;
+  let BOARD_HALF = HALF + 1;            // 棋盤板面半寬
   const SLAB_H = 0.6;                   // 棋盤厚度
   const STONE_R = 0.42, STONE_H = 0.24; // 棋子半徑 / 球心高度
+
+  function applyBoardSize(n) {
+    SIZE = n;
+    HALF = (SIZE - 1) / 2;
+    BOARD_HALF = HALF + 1;
+  }
 
   const svg = document.getElementById('scene');
   const layers = {
@@ -40,12 +141,18 @@
   }
 
   /* ---------- 視角模式：2D 俯視 / 回正 / 鎖定 ---------- */
-  const VIEW_KEY = 'gomoku3d-view';
-  const CAM_DEFAULT = { yaw: 0, pitch: 0.52, dist: 13.5 };
+  // 換過鍵名：舊版存的是絕對距離（13.5），新版存的是「相對盤面大小的倍率」，
+  // 沿用舊值會讓 9 路貼到臉上、19 路遠在天邊。
+  const VIEW_KEY = 'g3d-view';
+  const CAM_DEFAULT = { yaw: 0, pitch: 0.52, dist: 1 };
+  // 相機距離隨盤面大小走：1.7 × 板面半寬。15 路時等於 13.6，與改版前幾乎一致。
+  const DIST_K = 1.7, DIST_K_2D = 1.875;
+  const dist3d = () => BOARD_HALF * DIST_K * view.dist;
+  const dist2d = () => BOARD_HALF * DIST_K_2D;
   // 2D 俯視＝把相機搬到棋盤正上方直視。pitch 取「逼近」π/2 而不取等值：
   // 剛好 π/2 時 tan(pitch) 會溢位、視空間基底退化，投影會除出 Infinity／NaN，
   // 畫面會靜默變成整片空白（不會噴錯，很難查）。
-  const CAM_2D = { yaw: 0, pitch: Math.PI / 2 - 0.002, dist: 15 };
+  const CAM_2D = { yaw: 0, pitch: Math.PI / 2 - 0.002 };
   // view 存的是「3D 模式下的角度」。2D 只是暫時改用 CAM_2D 顯示，
   // 切回 3D 時原本的角度要原封不動回來（與西洋棋一致）。
   const view = { mode: '3d', yaw: CAM_DEFAULT.yaw, pitch: CAM_DEFAULT.pitch, dist: CAM_DEFAULT.dist, locked: false };
@@ -64,7 +171,7 @@
     if (y <= -Math.PI) y += TAU;
     view.yaw = y;
     view.pitch = Math.min(1.35, Math.max(0.18, numOr(view.pitch, CAM_DEFAULT.pitch)));
-    view.dist = Math.min(30, Math.max(6, numOr(view.dist, CAM_DEFAULT.dist)));
+    view.dist = Math.min(2.2, Math.max(0.45, numOr(view.dist, CAM_DEFAULT.dist)));
     view.locked = view.locked === true;   // 只認真正的 true
     view.mode = view.mode === '2d' ? '2d' : '3d';
   }
@@ -79,8 +186,10 @@
     try { localStorage.setItem(VIEW_KEY, JSON.stringify(view)); } catch {}
   }
   function syncCam() {
-    const src = view.mode === '2d' ? CAM_2D : view;
-    cam.yaw = src.yaw; cam.pitch = src.pitch; cam.dist = src.dist;
+    const is2d = view.mode === '2d';
+    const src = is2d ? CAM_2D : view;
+    cam.yaw = src.yaw; cam.pitch = src.pitch;
+    cam.dist = is2d ? dist2d() : dist3d();
   }
   // 是否還停在預設角度（決定「回正」要不要亮起來）
   function viewIsDefault() {
@@ -203,6 +312,7 @@
   let renjuOn = false;    // 禁手規則
   let busy = false;       // AI 思考中
   let aiTimer = null;
+  let aiRAF = null;      // 分時 AI 搜尋的 rAF 控制代碼
   let startTime = 0;
   let hoverCell = null;
   let recorded = false;   // 本局已寫入排行榜
@@ -231,7 +341,7 @@
     const m = game.moves[game.moves.length - 1];
     if (!m) return;
     fxList.push({ kind: 'place', gx: m.x, gy: m.y, player: m.player, t0: performance.now() });
-    if (game.winner > 0 && game.winLine) {
+    if (G.features.winLine && game.winner > 0 && game.winLine) {
       fxList.push({ kind: 'win', line: game.winLine, player: m.player, t0: performance.now() });
     }
     ensureFxLoop();
@@ -387,7 +497,8 @@
     layers.bg.innerHTML = bg;
 
     /* 棋桌 + 棋盤實體 */
-    let b = quad([[-13, -SLAB_H, -13], [13, -SLAB_H, -13], [13, -SLAB_H, 13], [-13, -SLAB_H, 13]], '#3d2b1a');
+    const T = BOARD_HALF + 5;   // 棋桌比棋盤大一圈，隨盤面大小一起長
+    let b = quad([[-T, -SLAB_H, -T], [T, -SLAB_H, -T], [T, -SLAB_H, T], [-T, -SLAB_H, T]], '#3d2b1a');
     const B = BOARD_HALF;
     const top = [[-B, 0, -B], [B, 0, -B], [B, 0, B], [-B, 0, B]];
     const sides = [];
@@ -412,8 +523,8 @@
     }
     b += `<g stroke="#5a3d1a" stroke-width="1.1" opacity=".9">${lines}</g>`;
 
-    /* 星位 */
-    for (const [sx, sz] of [[3, 3], [11, 3], [7, 7], [3, 11], [11, 11]]) {
+    /* 星位（各棋種／各盤面大小的星位由 GAMES 表決定） */
+    for (const [sx, sz] of G.stars(SIZE)) {
       const p = project(gx2w(sx), 0.02, gx2w(sz));
       if (p) b += `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${(F * 0.09 / p.d).toFixed(1)}" fill="#5a3d1a"/>`;
     }
@@ -458,7 +569,7 @@
       .filter(Boolean)
       .sort((a, b2) => b2.c.d - a.c.d);
     const last = dispMoves[dispMoves.length - 1];
-    const showLastMark = replay.active || !game.winner;
+    const showLastMark = replay.active || !G.isOver(game);
     // 剛落下的棋子彈跳登場（pop）
     const fxNow = performance.now();
     const popMap = (fxOn && !replay.active && fxList.length) ? new Map(
@@ -483,7 +594,7 @@
     }
 
     /* 預覽棋子 */
-    if (hoverCell && !game.winner && !busy && mode !== 'auto' && !intro.active && !replay.active && game.board[hoverCell.gy][hoverCell.gx] === E.EMPTY) {
+    if (hoverCell && G.canMove(game) && !busy && mode !== 'auto' && !intro.active && !replay.active && game.board[hoverCell.gy][hoverCell.gx] === E.EMPTY) {
       const c = project(gx2w(hoverCell.gx), STONE_H, gx2w(hoverCell.gy));
       if (c) {
         const rx = F * STONE_R / c.d;
@@ -494,7 +605,7 @@
 
     /* 特效層：勝利連線 */
     let fx = '';
-    if (game.winLine && !flee.active && (!replay.active || replay.index >= game.moves.length)) {
+    if (G.features.winLine && game.winLine && !flee.active && (!replay.active || replay.index >= game.moves.length)) {
       const pts = game.winLine
         .map((c) => project(gx2w(c.x), STONE_H + 0.05, gx2w(c.y)))
         .filter(Boolean);
@@ -508,7 +619,7 @@
 
     /* 教練模式：威脅點高亮（僅玩家回合、非回放/觀戰/教學 AI 思考中） */
     const coachVisible = coachOn && !replay.active && !intro.active && mode !== 'auto' &&
-      !game.winner && !busy && !lessonState.busyAI &&
+      G.canMove(game) && !busy && !lessonState.busyAI &&
       (mode !== 'ai' || game.current !== aiSide);
     if (coachVisible) {
       const key = mode + ':' + game.moves.length + ':' + game.current;
@@ -545,7 +656,7 @@
 
     /* AI 思考熱力圖：候選點依評分上色（藍→青→黃→紅），最佳點加白環 */
     const heatVisible = heatOn && !replay.active && !intro.active && mode !== 'auto' &&
-      !game.winner && !busy && !lessonState.busyAI &&
+      G.canMove(game) && !busy && !lessonState.busyAI &&
       (mode !== 'ai' || game.current !== aiSide);
     if (heatVisible) {
       const key = 'h:' + mode + ':' + game.moves.length + ':' + game.current;
@@ -574,7 +685,7 @@
     }
 
     /* 「提示」建議點：金色雙環 */
-    if (hintCell && !replay.active && !game.winner) {
+    if (hintCell && !replay.active && !G.isOver(game)) {
       const p = project(gx2w(hintCell.x), 0.03, gx2w(hintCell.y));
       if (p) {
         const r = F * 0.36 / p.d;
@@ -609,7 +720,29 @@
   /* ---------- 遊戲流程 ---------- */
   function setStatus(t) { statusEl.textContent = t; }
 
+  // 圍棋的狀態列：輪次 + 提子數 + 終局結果
+  function goTurnText() {
+    const caps = `　提子 黑 ${game.captured[E.BLACK]}／白 ${game.captured[E.WHITE]}`;
+    if (game.phase === 'over') {
+      const w = game.winner === E.BLACK ? '黑棋' : game.winner === E.WHITE ? '白棋' : '';
+      if (game.reason === 'resign') return `${w}獲勝（對方認輸）`;
+      const r = game.result;
+      if (!r) return '對局結束';
+      if (r.winner === -1) return `和局（黑 ${r.black}／白 ${r.white}）`;
+      return `${w}勝 ${Math.abs(r.diff)} 目（黑 ${r.black}／白 ${r.white}）`;
+    }
+    if (game.phase === 'scoring') return '雙方虛手 — 準備結算';
+    const c = game.current === E.BLACK ? '黑棋' : '白棋';
+    const last = game.moves[game.moves.length - 1];
+    const passed = last && last.pass ? '　對方剛虛手' : '';
+    if (mode === 'ai') {
+      return (game.current === aiSide ? '電腦思考中…' : `你的回合（${c}）`) + passed + caps;
+    }
+    return `${c}回合${passed}${caps}`;
+  }
+
   function turnText() {
+    if (G.id === 'go') return goTurnText();
     if (mode === 'auto') {
       if (game.winner === -1) return '和局';
       if (game.winner) return game.winner === BOSS ? '大哥（黑棋）獲勝！不敗紀錄繼續' : '挑戰者（白棋）連五了…！';
@@ -631,11 +764,26 @@
     return `${c}回合`;
   }
 
+  // 每個棋種只顯示對它有意義的功能鈕
+  const FEATURE_BTN = {
+    coach: 'btn-coach', heat: 'btn-heat', lessons: 'btn-lessons',
+    puzzles: 'btn-puzzles', openings: 'btn-openings', online: 'btn-online',
+    rank: 'btn-rank',
+  };
+  function applyFeatureVisibility() {
+    for (const k in FEATURE_BTN) {
+      const el = document.getElementById(FEATURE_BTN[k]);
+      if (el) el.style.display = G.features[k] ? '' : 'none';
+    }
+  }
+
   function updateTopbar() {
+    applyFeatureVisibility();
     document.getElementById('btn-replay').style.display =
-      (game.winner && mode !== 'auto' && !replay.active && game.moves.length) ? '' : 'none';
+      (G.features.replay && G.isOver(game) && mode !== 'auto' && !replay.active && game.moves.length) ? '' : 'none';
     document.getElementById('replay-ctrl').classList.toggle('show', replay.active);
-    document.getElementById('btn-hint').style.display = (coachOn || mode === 'lesson' || mode === 'puzzle') ? '' : 'none';
+    document.getElementById('btn-hint').style.display =
+      (G.features.hint && (coachOn || mode === 'lesson' || mode === 'puzzle')) ? '' : 'none';
     document.getElementById('btn-coach').classList.toggle('on', coachOn);
     document.getElementById('btn-heat').classList.toggle('on', heatOn);
     document.getElementById('btn-fx').classList.toggle('on', fxOn);
@@ -646,50 +794,74 @@
     render();
     setStatus(turnText());
     updateTopbar();
-    if (game.winner) {
+    if (G.isOver(game)) {
       if (game.winner > 0) sound.win();
-      if (mode !== 'auto' && mode !== 'lesson' && mode !== 'puzzle' && mode !== 'online' && game.winner > 0 && !recorded) setTimeout(openWinModal, 900);
+      if (G.features.rank && mode !== 'auto' && mode !== 'lesson' && mode !== 'puzzle' && mode !== 'online' && game.winner > 0 && !recorded) setTimeout(openWinModal, 900);
       return;
     }
     scheduleAI();
   }
 
+  // 分時驅動 AI：每幀只算 28ms，讓瀏覽器有空重繪。
+  // 圍棋的 MCTS 一手要想好幾秒，同步跑會把整個畫面凍住。
+  function runAI(opts, onMove) {
+    const search = G.aiSearch(game, opts);
+    const tick = () => {
+      aiRAF = null;
+      if (!search.step(28)) { aiRAF = requestAnimationFrame(tick); return; }
+      onMove(search.best());
+    };
+    aiRAF = requestAnimationFrame(tick);
+  }
+
+  // AI 的著手可能是虛手（圍棋）
+  function applyAIMove(mv) {
+    if (!mv) return false;
+    if (mv.pass) { if (E.pass) E.pass(game); return true; }
+    if (G.place(game, mv.x, mv.y)) { sound.stone(); fxAfterPlace(); return true; }
+    return false;
+  }
+
+  function cancelAI() {
+    if (aiTimer) { clearTimeout(aiTimer); aiTimer = null; }
+    if (aiRAF) { cancelAnimationFrame(aiRAF); aiRAF = null; }
+    busy = false;
+  }
+
   function scheduleAI() {
-    if (mode !== 'ai' || game.winner || game.current !== aiSide) return;
+    if (mode !== 'ai' || !G.canMove(game) || game.current !== aiSide) return;
     busy = true;
     setStatus('電腦思考中…');
     aiTimer = setTimeout(() => {
       aiTimer = null;
-      const mv = E.aiMove(game, { level: aiLevel });
-      if (mv) { E.place(game, mv.x, mv.y); sound.stone(); fxAfterPlace(); }
-      busy = false;
-      afterMove();
+      runAI({ level: aiLevel }, (mv) => {
+        applyAIMove(mv);
+        busy = false;
+        afterMove();
+      });
     }, 380);
   }
 
   function tryPlace(gx, gy) {
-    if (busy || game.winner || mode === 'auto' || intro.active || replay.active) return;
+    if (busy || !G.canMove(game) || mode === 'auto' || intro.active || replay.active) return;
     if (mode === 'online') return onlinePlace(gx, gy);
     if (mode === 'lesson' || mode === 'puzzle') return lessonPlace(gx, gy);
     if (mode === 'ai' && game.current === aiSide) return;
-    if (E.place(game, gx, gy)) {
+    if (G.place(game, gx, gy)) {
       sound.stone();
       fxAfterPlace();
       hoverCell = null;
       hintCell = null;
       afterMove();
-    } else if (game.renju && game.current === E.BLACK) {
-      const r = E.forbiddenReason(game.board, gx, gy);
-      if (r) {
-        sound.deny();
-        setStatus(`禁手！黑棋不能下「${r}」`);
-      }
+    } else {
+      const why = G.illegalReason(game, gx, gy);
+      if (why) { sound.deny(); setStatus(why); }
     }
   }
 
   function doUndo() {
     if (replay.active) return exitReplay();
-    if (aiTimer) { clearTimeout(aiTimer); aiTimer = null; busy = false; }
+    cancelAI();
     if (mode === 'auto') {
       if (auto.timer) { clearTimeout(auto.timer); auto.timer = null; }
       auto.paused = true;
@@ -700,7 +872,7 @@
     if (mode === 'lesson' || mode === 'puzzle') return lessonUndo();
     if (mode === 'online') {
       if (!game.moves.length) return;
-      E.undo(game);
+      G.undo(game);
       hintCell = null;
       if (net) net.send({ t: 'undo' });
       afterMove();
@@ -709,20 +881,21 @@
     if (!game.moves.length) return;
     recorded = false;
     hintCell = null;
-    E.undo(game);
-    if (mode === 'ai' && game.current === aiSide && game.moves.length) E.undo(game);
+    G.undo(game);
+    if (mode === 'ai' && game.current === aiSide && game.moves.length) G.undo(game);
     closeModal('modal-win');
     afterMove();
   }
 
   function newGame() {
-    if (aiTimer) { clearTimeout(aiTimer); aiTimer = null; }
+    cancelAI();
     if (auto.timer) { clearTimeout(auto.timer); auto.timer = null; }
     if (net) { try { net.close(); } catch {} net = null; } // 開始單機局即離線
-    busy = false;
     replay.active = false;
     lessonState.active = null;
-    game = E.createGame({ renju: renjuOn && mode !== 'auto' });
+    game = G.newGame({ renju: renjuOn && mode !== 'auto', size: SIZE });
+    applyBoardSize(game.board.length);   // 盤面大小以實際建出來的棋局為準
+    applyView();                          // 相機距離隨盤面大小重算
     recorded = false;
     hoverCell = null;
     hintCell = null;
@@ -936,7 +1109,8 @@
     const t = Math.min(1, (now - intro.t0) / 6000);
     const e = easeIO(t);
     // 只做平順的俯衝入座，不旋轉（避免暈眩）；yaw 固定、僅極輕微收斂
-    cam.dist = 40 - (40 - 13.5) * e;
+    const near = BOARD_HALF * DIST_K, far = near * 2.96;
+    cam.dist = far - (far - near) * e;
     cam.pitch = 1.05 - (1.05 - 0.52) * e;
     cam.yaw = (1 - e) * 0.12;
     render();
@@ -1194,32 +1368,74 @@
       cb(btn);
     });
   }
-  segInit('seg-mode', (btn) => {
-    setupMode = btn.dataset.mode;
+  // 程式性地把某個 seg 切到指定選項（換棋種時要收拾不適用的選擇）
+  function selectSeg(id, key, value) {
+    const seg = document.getElementById(id);
+    if (!seg) return;
+    seg.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset[key] === String(value)));
+  }
+
+  let setupGameId = 'gomoku';
+  let setupSize = GAMES.gomoku.defaultSize;
+
+  // 依「目前選的棋種 × 目前選的模式」決定哪些欄位該出現
+  function refreshSetupFields() {
+    const cfg = GAMES[setupGameId];
+    const autoBtn = document.querySelector('#seg-mode button[data-mode="auto"]');
+    if (autoBtn) autoBtn.style.display = cfg.features.auto ? '' : 'none';
+    // 「電腦對電腦」是五子棋專屬的觀戰模式，換到圍棋要把它收起來並退回雙人對戰
+    if (!cfg.features.auto && setupMode === 'auto') {
+      setupMode = 'pvp';
+      selectSeg('seg-mode', 'mode', 'pvp');
+    }
+    document.getElementById('field-board').style.display = cfg.sizes.length > 1 ? '' : 'none';
     document.getElementById('field-side').style.display = setupMode === 'ai' ? '' : 'none';
     document.getElementById('field-level').style.display = setupMode === 'ai' ? '' : 'none';
-    document.getElementById('field-rules').style.display = setupMode === 'auto' ? 'none' : '';
-    document.getElementById('auto-desc').style.display = setupMode === 'auto' ? '' : 'none';
+    document.getElementById('field-rules').style.display =
+      (cfg.features.renju && setupMode !== 'auto') ? '' : 'none';
+    document.getElementById('auto-desc').style.display =
+      (setupMode === 'auto' && cfg.features.auto) ? '' : 'none';
+    setLevelDesc();
+  }
+
+  segInit('seg-game', (btn) => {
+    setupGameId = btn.dataset.game;
+    setupSize = GAMES[setupGameId].defaultSize;
+    selectSeg('seg-size', 'size', setupSize);
+    refreshSetupFields();
+  });
+  segInit('seg-size', (btn) => { setupSize = +btn.dataset.size; });
+  segInit('seg-mode', (btn) => {
+    setupMode = btn.dataset.mode;
+    refreshSetupFields();
   });
   segInit('seg-side', (btn) => {
     humanSide = +btn.dataset.side;
     aiSide = humanSide === E.BLACK ? E.WHITE : E.BLACK;
   });
-  const LEVEL_DESC = {
-    easy: '入門：新手級。偏重自己進攻、幾乎不防守，用「活三做活四」就能贏它。',
-    medium: '進階：會擋你的活三、往後算一回合，一般玩家的對手。',
-    hard: '困難：往後算兩三回合，看得到雙威脅組合、會設陷阱。',
-    master: '大師：更深更廣的搜尋（每手最多約 0.4 秒），全力求勝。',
+  // 難度說明依棋種不同（同樣叫「困難」，兩種棋的內涵差很多）
+  const setLevelDesc = () => {
+    const d = (GAMES[setupGameId] || G).levelDesc || {};
+    document.getElementById('level-desc').textContent = d[aiLevel] || '';
   };
-  const setLevelDesc = () => { document.getElementById('level-desc').textContent = LEVEL_DESC[aiLevel] || ''; };
   segInit('seg-level', (btn) => { aiLevel = btn.dataset.level; setLevelDesc(); });
-  setLevelDesc();
-  document.getElementById('field-side').style.display = 'none';
-  document.getElementById('field-level').style.display = 'none';
+  refreshSetupFields();
+
+  // 切換棋種：換引擎、換盤面大小、換標題與功能鈕
+  function applyGameConfig(id, size) {
+    G = GAMES[id] || GAMES.gomoku;
+    E = G.engine;
+    applyBoardSize(G.sizes.indexOf(size) >= 0 ? size : G.defaultSize);
+    document.title = G.docTitle;
+    const h = document.getElementById('app-title');
+    if (h) h.textContent = G.heading;
+    applyFeatureVisibility();
+  }
 
   document.getElementById('btn-start').addEventListener('click', () => {
     mode = setupMode;
     renjuOn = document.getElementById('chk-renju').checked;
+    applyGameConfig(setupGameId, setupSize);
     closeModal('modal-setup');
     newGame();
   });
@@ -1237,11 +1453,7 @@
   /* ---------- 棋譜回放 ---------- */
   function setReplayIndex(i) {
     replay.index = Math.max(0, Math.min(game.moves.length, i));
-    replay.board = Array.from({ length: SIZE }, () => new Array(SIZE).fill(E.EMPTY));
-    for (let k = 0; k < replay.index; k++) {
-      const m = game.moves[k];
-      replay.board[m.y][m.x] = m.player;
-    }
+    replay.board = G.replayBoard(game, replay.index);
     document.getElementById('rp-pos').textContent = `${replay.index}/${game.moves.length}`;
     render();
     setStatus(`回放中：第 ${replay.index}/${game.moves.length} 手`);
@@ -1866,6 +2078,7 @@
   /* ---------- 啟動 ---------- */
   window.addEventListener('resize', resize);
   resize();
+  applyGameConfig(setupGameId, setupSize);   // 標題與功能鈕同步預設棋種
   updateTopbar(); // 讓特效/音效等開關按鈕一開始就反映狀態
   applyView();    // 視角三顆鈕的文字/停用狀態同步保存的視角
   let introSeen = true;
@@ -1880,6 +2093,10 @@
   window.__g3d = {
     get game() { return game; },
     get mode() { return mode; },
+    get gameId() { return G.id; },
+    get size() { return SIZE; },
+    GAMES,
+    applyGameConfig,
     get mySide() { return mySide; },
     get netOpen() { return !!(net && net.open); },
     screenPt: (gx, gy) => screenPts[gy] && screenPts[gy][gx],

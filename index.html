@@ -3,29 +3,29 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>3D 五子棋 — 第一人稱對弈</title>
+<title>3D 棋弈 — 五子棋 × 圍棋</title>
 <meta name="theme-color" content="#10141c">
-<meta name="description" content="純網頁 3D 五子棋：四級電腦 AI、新手教學、每日殘局謎題、開局定式圖鑑、禁手規則、AI 思考熱力圖、棋譜回放、線上對戰，手機也能玩。">
+<meta name="description" content="純網頁 3D 棋弈，一站兩種棋：五子棋（四級 AI、教學、每日謎題、開局定式、禁手規則、線上對戰）與圍棋（9／13／19 路、MCTS 電腦對手、中國規則數子）。免安裝，手機也能玩。">
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <!-- 社群分享預覽（Open Graph / Twitter Card） -->
 <meta property="og:type" content="website">
-<meta property="og:site_name" content="3D 五子棋">
-<meta property="og:title" content="3D 五子棋 — 第一人稱對弈">
-<meta property="og:description" content="四級電腦 AI、新手教學、每日殘局謎題、開局定式、AI 熱力圖、線上對戰，免安裝、手機也能玩。">
+<meta property="og:site_name" content="3D 棋弈">
+<meta property="og:title" content="3D 棋弈 — 五子棋 × 圍棋">
+<meta property="og:description" content="一站兩種棋：五子棋與圍棋（9／13／19 路）。電腦對手、教學、謎題、定式、線上對戰，免安裝、手機也能玩。">
 <meta property="og:image" content="https://hbkqoo.github.io/gomoku/og-image.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:url" content="https://hbkqoo.github.io/gomoku/">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="3D 五子棋 — 第一人稱對弈">
-<meta name="twitter:description" content="四級電腦 AI、新手教學、每日殘局謎題、開局定式、AI 熱力圖、線上對戰，免安裝、手機也能玩。">
+<meta name="twitter:title" content="3D 棋弈 — 五子棋 × 圍棋">
+<meta name="twitter:description" content="一站兩種棋：五子棋與圍棋（9／13／19 路）。電腦對手、教學、謎題、定式、線上對戰，免安裝、手機也能玩。">
 <meta name="twitter:image" content="https://hbkqoo.github.io/gomoku/og-image.png">
-<link rel="stylesheet" href="style.css?v=12">
+<link rel="stylesheet" href="style.css?v=13">
 </head>
 <body>
 <div id="app">
   <header id="topbar">
-    <h1>3D 五子棋</h1>
+    <h1 id="app-title">3D 五子棋</h1>
     <div id="status" aria-live="polite">黑棋回合</div>
     <div id="controls">
       <span id="auto-ctrl">
@@ -112,6 +112,13 @@
     <div class="panel">
       <h2>開始對局</h2>
       <div class="field">
+        <span class="label">棋種</span>
+        <div class="seg" id="seg-game">
+          <button data-game="gomoku" class="on">五子棋</button>
+          <button data-game="go">圍棋</button>
+        </div>
+      </div>
+      <div class="field">
         <span class="label">模式</span>
         <div class="seg" id="seg-mode">
           <button data-mode="pvp" class="on">雙人對戰</button>
@@ -126,6 +133,15 @@
           <button data-side="1" class="on">黑棋（先手）</button>
           <button data-side="2">白棋（後手）</button>
         </div>
+      </div>
+      <div class="field" id="field-board" style="display:none">
+        <span class="label">盤面</span>
+        <div class="seg" id="seg-size">
+          <button data-size="9">9 路</button>
+          <button data-size="13">13 路</button>
+          <button data-size="19" class="on">19 路</button>
+        </div>
+        <p class="hint-text">中國規則、貼目 7.5 目。9 路最適合與電腦對戰；19 路是正式棋盤。</p>
       </div>
       <div class="field" id="field-level" style="display:none">
         <span class="label">電腦強度</span>
@@ -304,11 +320,13 @@
     </div>
   </div>
 </div>
-<script src="engine.js?v=12"></script>
-<script src="lessons.js?v=12"></script>
-<script src="openings.js?v=12"></script>
-<script src="puzzles.js?v=12"></script>
-<script src="online.js?v=12"></script>
-<script src="main.js?v=12"></script>
+<script src="engine.js?v=13"></script>
+<script src="go.js?v=13"></script>
+<script src="go-ai.js?v=13"></script>
+<script src="lessons.js?v=13"></script>
+<script src="openings.js?v=13"></script>
+<script src="puzzles.js?v=13"></script>
+<script src="online.js?v=13"></script>
+<script src="main.js?v=13"></script>
 </body>
 </html>
