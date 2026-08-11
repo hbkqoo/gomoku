@@ -27,7 +27,14 @@
     function bind(channel) {
       dc = channel;
       dc.onopen = () => handlers.onOpen && handlers.onOpen();
-      dc.onmessage = (e) => { try { handlers.onMessage && handlers.onMessage(JSON.parse(e.data)); } catch {} };
+      dc.onmessage = (e) => {
+        // 只吞「對方傳來壞 JSON」；自己這端處理器的錯誤要印出來，
+        // 靜默吞掉會讓兩端狀態無聲分岔、完全查不到原因
+        let msg = null;
+        try { msg = JSON.parse(e.data); } catch { return; }
+        try { handlers.onMessage && handlers.onMessage(msg); }
+        catch (err) { console.error('online onMessage error:', err); }
+      };
       dc.onclose = () => handlers.onClose && handlers.onClose();
     }
     pc.addEventListener('connectionstatechange', () => {

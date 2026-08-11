@@ -121,7 +121,7 @@
       stars: (n) => window.GoEngine.starPoints(n),
       features: {
         renju: false, auto: false, lessons: true, puzzles: false, openings: false,
-        online: false, coach: true, heat: true, hint: true, rank: true, 
+        online: true, coach: true, heat: true, hint: true, rank: true, 
         replay: true, pass: true, winLine: false,
       },
       newGame(o) { return window.GoEngine.createGame({ size: o.size }); },
@@ -882,6 +882,10 @@
     const c = game.current === E.BLACK ? '黑棋' : '白棋';
     const last = game.moves[game.moves.length - 1];
     const passed = last && last.pass ? '　對方剛虛手' : '';
+    if (mode === 'online') {
+      const meC = mySide === E.BLACK ? '黑棋' : '白棋';
+      return (game.current === mySide ? `你的回合（${meC}）` : '等待對方落子…') + passed + caps;
+    }
     if (mode === 'ai') {
       return (game.current === aiSide ? '電腦思考中…' : `你的回合（${c}）`) + passed + caps;
     }
@@ -929,7 +933,9 @@
     const goCtrl = document.getElementById('go-ctrl');
     goCtrl.classList.toggle('show', G.features.pass && !replay.active);
     document.getElementById('btn-pass').disabled =
-      !G.canMove(game) || busy || scoring.active || (mode === 'ai' && game.current === aiSide);
+      !G.canMove(game) || busy || scoring.active ||
+      (mode === 'ai' && game.current === aiSide) ||
+      (mode === 'online' && game.current !== mySide);
     document.getElementById('btn-resign').disabled = G.isOver(game);
     document.getElementById('btn-replay').style.display =
       (G.features.replay && G.isOver(game) && mode !== 'auto' && !replay.active && game.moves.length) ? '' : 'none';
@@ -972,7 +978,10 @@
     requestAnimationFrame(() => {
       if (!scoring.active) return;
       try {
-        scoring.dead = window.GoAI.guessDead(game, { sims: 800 }).dead;
+        // 線上對戰用固定種子：guessDead 預設拿時間當亂數種子，兩端會算出
+        // 不同的死子集合；固定種子讓兩端「不用傳資料」就得到同一份判死
+        const opts = mode === 'online' ? { sims: 800, seed: 20260810 } : { sims: 800 };
+        scoring.dead = window.GoAI.guessDead(game, opts).dead;
       } catch { scoring.dead = new Set(); }
       refreshScore();
     });
@@ -986,7 +995,7 @@
     setStatus('確認死子：點棋子切換死活，確定後按「確認結算」');
   }
 
-  function toggleDeadAt(gx, gy) {
+  function toggleDeadAt(gx, gy, fromNet) {
     if (!scoring.active || game.board[gy][gx] === E.EMPTY) return;
     const grp = E.groupAt(game.board, SIZE, gx, gy);
     const makeDead = !scoring.dead.has(grp.stones[0]);
@@ -995,6 +1004,7 @@
     }
     sound.stone();
     refreshScore();
+    if (!fromNet && mode === 'online' && net && net.open) net.send({ t: 'dead', x: gx, y: gy });
   }
 
   function updateScoreBar() {
@@ -1015,8 +1025,11 @@
     updateScoreBar();
   }
 
-  function finishScoring() {
+  function finishScoring(fromNet) {
     if (!scoring.active) return;
+    if (!fromNet && mode === 'online' && net && net.open) {
+      net.send({ t: 'finish', d: [...scoring.dead] });
+    }
     const r = E.finalize(game, scoring.dead);
     const dead = scoring.dead;
     leaveScoring();
@@ -1029,8 +1042,9 @@
     showScoreModal(r);
   }
 
-  function resumeFromScoring() {
+  function resumeFromScoring(fromNet) {
     if (!scoring.active) return;
+    if (!fromNet && mode === 'online' && net && net.open) net.send({ t: 'resume' });
     E.resumePlay(game);
     leaveScoring();
     render();
@@ -1042,6 +1056,11 @@
   function doPass() {
     if (!G.features.pass || !G.canMove(game) || busy || replay.active || intro.active) return;
     if (mode === 'ai' && game.current === aiSide) return;
+    if (mode === 'online') {
+      if (!net || !net.open) { setStatus('尚未連線'); return; }
+      if (game.current !== mySide) { setStatus('現在是對方的回合'); return; }
+      net.send({ t: 'pass' });
+    }
     E.pass(game);
     hoverCell = null;
     hintCell = null;
@@ -1050,10 +1069,11 @@
 
   function doResign() {
     if (!G.features.pass || G.isOver(game) || replay.active) return;
-    // 與電腦對戰時認輸的一定是玩家；雙人對戰時是當下輪到的一方
-    const side = mode === 'ai' ? humanSide : game.current;
+    // 與電腦對戰時認輸的一定是玩家；線上時是自己；雙人對戰時是當下輪到的一方
+    const side = mode === 'ai' ? humanSide : (mode === 'online' ? mySide : game.current);
     const who = side === E.BLACK ? '黑棋' : '白棋';
     if (!confirm(`確定${who}認輸嗎？`)) return;
+    if (mode === 'online' && net && net.open) net.send({ t: 'resign', side });
     cancelAI();
     leaveScoring();
     E.resign(game, side);
@@ -1096,8 +1116,8 @@
   });
   document.getElementById('btn-pass').addEventListener('click', doPass);
   document.getElementById('btn-resign').addEventListener('click', doResign);
-  document.getElementById('btn-score-done').addEventListener('click', finishScoring);
-  document.getElementById('btn-score-resume').addEventListener('click', resumeFromScoring);
+  document.getElementById('btn-score-done').addEventListener('click', () => finishScoring(false));
+  document.getElementById('btn-score-resume').addEventListener('click', () => resumeFromScoring(false));
   document.getElementById('btn-score-close').addEventListener('click', () => closeModal('modal-score'));
   document.getElementById('btn-score-new').addEventListener('click', () => {
     closeModal('modal-score');
@@ -2284,7 +2304,13 @@
     busy = false;
     replay.active = false;
     lessonState.active = null;
-    game = E.createGame(); // 線上不啟用禁手，避免兩端判定不一致
+    leaveScoring();
+    closeModal('modal-score');
+    game = G.newGame({ renju: false, size: SIZE }); // 線上不啟用禁手，避免兩端判定不一致
+    applyBoardSize(game.board.length);
+    applyView();
+    // 主機決定棋種與盤面，客方收到 setup 後跟進
+    if (side === E.BLACK && net && net.open) net.send({ t: 'setup', game: G.id, size: SIZE });
     recorded = true;
     hoverCell = null;
     hintCell = null;
@@ -2300,31 +2326,64 @@
   function onlinePlace(gx, gy) {
     if (!net || !net.open) { setStatus('尚未連線'); return; }
     if (game.current !== mySide) { setStatus('現在是對方的回合'); return; }
-    if (E.place(game, gx, gy)) {
+    if (G.place(game, gx, gy)) {
       sound.stone();
       fxAfterPlace();
       hoverCell = null;
       hintCell = null;
       net.send({ t: 'move', x: gx, y: gy });
       afterMove();
+    } else {
+      const why = G.illegalReason(game, gx, gy);
+      if (why) { sound.deny(); setStatus(why); }
     }
   }
 
   function onNetMessage(m) {
     if (!m || mode !== 'online') return;
     if (m.t === 'move') {
-      if (game.winner) return;
+      if (!G.canMove(game)) return;
       if (game.current === mySide) return; // 只接受對方回合的落子
-      if (E.place(game, m.x, m.y)) { sound.stone(); fxAfterPlace(); afterMove(); }
+      if (G.place(game, m.x, m.y)) { sound.stone(); fxAfterPlace(); afterMove(); }
+    } else if (m.t === 'pass') {
+      if (!G.canMove(game) || game.current === mySide || !E.pass) return;
+      E.pass(game);
+      afterMove();
     } else if (m.t === 'undo') {
-      if (game.moves.length) { E.undo(game); afterMove(); }
+      if (scoring.active) leaveScoring();
+      if (game.moves.length) { G.undo(game); afterMove(); }
+    } else if (m.t === 'resign') {
+      if (!E.resign || G.isOver(game)) return;
+      cancelAI();
+      leaveScoring();
+      E.resign(game, m.side === E.BLACK ? E.BLACK : E.WHITE);
+      render();
+      setStatus(turnText());
+      updateTopbar();
+      showScoreModal(null);
     } else if (m.t === 'new') {
       onlineReset();
+    } else if (m.t === 'dead') {
+      toggleDeadAt(m.x, m.y, true);
+    } else if (m.t === 'finish') {
+      if (Array.isArray(m.d)) scoring.dead = new Set(m.d);  // 以發起方的死子集合為準
+      finishScoring(true);
+    } else if (m.t === 'resume') {
+      resumeFromScoring(true);
+    } else if (m.t === 'setup') {
+      // 主機廣播的棋種與盤面：客方無條件跟進
+      if (GAMES[m.game]) {
+        applyGameConfig(m.game, m.size);
+        onlineReset();
+        setStatus(mySide === E.BLACK ? '已連線！你執黑，請先下' : `已連線！${G.label}對戰，你執白，等黑方落子`);
+      }
     }
   }
 
   function onlineReset() {
-    game = E.createGame();
+    leaveScoring();
+    closeModal('modal-score');
+    game = G.newGame({ renju: false, size: SIZE });
     recorded = true;
     hoverCell = null;
     hintCell = null;
