@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>新手教學・五子棋 × 圍棋</title>
+<meta name="theme-color" content="#10141c">
+<meta name="description" content="五子棋與圍棋的新手規則教學：每條規則配一個可互動的小棋盤，能不能下、有幾口氣、下哪裡會贏，全部由真正的對局引擎即時算出並標示。">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="3D 棋弈">
+<meta property="og:title" content="新手教學・五子棋 × 圍棋">
+<meta property="og:description" content="從零開始學五子棋與圍棋：規則、棋形、禁手、氣與提子、打劫、死活，每一條都配可以動手點的示範盤。">
+<meta property="og:image" content="https://hbkqoo.github.io/gomoku/og-image.png">
+<meta property="og:url" content="https://hbkqoo.github.io/gomoku/tutorial.html">
+<link rel="stylesheet" href="tutorial.css?v=1">
+</head>
+<body>
+
+<div id="tut-app">
+  <header id="tut-topbar">
+    <h1>新手教學</h1>
+    <div id="tut-tabs" role="tablist" aria-label="棋種"></div>
+    <span class="spacer"></span>
+    <a class="btn-link" href="index.html">▶ 開始下棋</a>
+  </header>
+
+  <div id="tut-body">
+    <nav id="tut-toc" aria-label="章節目錄"></nav>
+    <main id="tut-content"></main>
+  </div>
+
+  <footer id="tut-footer">
+    盤面上的標示（能不能下、有幾口氣、哪裡會連五）全部由對局引擎即時計算，與實際下棋時完全一致。
+    <a class="btn-link" href="index.html">開始下棋</a>
+  </footer>
+</div>
+
+<script src="engine.js?v=17"></script>
+<script src="go.js?v=17"></script>
+<script src="tutorial-lessons.js?v=1"></script>
+<script src="tutorial.js?v=1"></script>
+</body>
+</html>

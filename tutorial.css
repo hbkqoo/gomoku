@@ -1,0 +1,253 @@
+/* 新手教學頁樣式。
+   遊戲頁的 style.css 把 body 設成 overflow:hidden（3D 場景需要），
+   教學頁要能捲動，所以這裡另開一份，不共用。配色沿用同一套。 */
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: "Noto Sans TC", "Microsoft JhengHei", system-ui, sans-serif;
+  background: #10141c;
+  color: #e8e6df;
+  min-height: 100vh;
+  line-height: 1.7;
+}
+
+a { color: #d9b878; }
+
+button {
+  font: inherit;
+  color: #e8e6df;
+  background: #232b3d;
+  border: 1px solid #3a4560;
+  border-radius: 8px;
+  padding: 5px 12px;
+  cursor: pointer;
+  transition: background .15s;
+}
+button:hover { background: #2e3a55; }
+
+.btn-link {
+  display: inline-block;
+  text-decoration: none;
+  background: #b8873a;
+  border: 1px solid #d9b878;
+  color: #16120a;
+  font-weight: 700;
+  border-radius: 8px;
+  padding: 5px 12px;
+}
+.btn-link:hover { background: #d9a44a; }
+
+#tut-app { display: flex; flex-direction: column; min-height: 100vh; }
+
+#tut-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 9px 16px;
+  background: rgba(12, 15, 22, .95);
+  border-bottom: 1px solid #2a3245;
+}
+#tut-topbar h1 { font-size: 18px; letter-spacing: 2px; color: #d9b878; }
+#tut-topbar .spacer { flex: 1; }
+
+#tut-tabs { display: flex; gap: 8px; flex-wrap: wrap; }
+#tut-tabs button.on { background: #b8873a; border-color: #d9b878; color: #16120a; font-weight: 700; }
+
+#tut-body {
+  flex: 1;
+  display: flex;
+  gap: 22px;
+  align-items: flex-start;
+  padding: 20px 22px 40px;
+  max-width: 1280px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+/* ---------- 目錄 ---------- */
+#tut-toc {
+  position: sticky;
+  top: 64px;
+  flex: 0 0 216px;
+  max-height: calc(100vh - 84px);
+  overflow: auto;
+  background: #161b26;
+  border: 1px solid #2a3245;
+  border-radius: 12px;
+  padding: 12px 10px;
+}
+#tut-toc .toc-section {
+  font-size: 12.5px;
+  color: #d9b878;
+  letter-spacing: 1px;
+  margin: 12px 0 4px;
+  padding: 0 6px;
+}
+#tut-toc .toc-section:first-child { margin-top: 0; }
+#tut-toc a {
+  display: block;
+  font-size: 13px;
+  color: #b9c0d0;
+  text-decoration: none;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+#tut-toc a:hover { background: #232b3d; color: #e8e6df; }
+#tut-toc .toc-empty { font-size: 13px; color: #8f9ab3; }
+
+/* ---------- 內容 ---------- */
+#tut-content { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 22px; }
+
+.tut-section > h2 {
+  font-size: 17px;
+  color: #d9b878;
+  letter-spacing: 1.5px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #2a3245;
+  margin-bottom: 16px;
+  scroll-margin-top: 70px;
+}
+.tut-section { display: flex; flex-direction: column; }
+
+.tut-lesson {
+  background: #161b26;
+  border: 1px solid #2a3245;
+  border-radius: 14px;
+  padding: 16px 18px;
+  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  scroll-margin-top: 70px;
+}
+.tut-lesson h3 { font-size: 18px; color: #f2dfae; letter-spacing: .5px; }
+.lesson-summary { font-size: 13.5px; color: #9aa5bd; margin-top: 3px; }
+
+.lesson-main { display: flex; gap: 18px; align-items: flex-start; flex-wrap: wrap; }
+.lesson-text { flex: 1 1 320px; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.lesson-text p { font-size: 15px; line-height: 1.95; color: #dde1e9; }
+
+.kw { color: #f2dfae; font-weight: 700; }
+.danger {
+  color: #ffb4aa;
+  background: rgba(196, 63, 47, .18);
+  border-radius: 4px;
+  padding: 0 4px;
+  font-weight: 700;
+}
+.sqref {
+  font-family: "Consolas", "Menlo", monospace;
+  font-size: .92em;
+  background: #202737;
+  border: 1px solid #33405c;
+  border-radius: 4px;
+  padding: 0 5px;
+  color: #cfe0ff;
+}
+.good { color: #9ad7a0; }
+.bad { color: #ff8a7d; }
+
+.tut-tips {
+  background: #12172080;
+  border-left: 3px solid #b8873a;
+  border-radius: 0 8px 8px 0;
+  padding: 9px 12px;
+}
+.tut-tips .tips-label { font-size: 12px; color: #d9b878; letter-spacing: 1px; margin-bottom: 4px; }
+.tut-tips ul { list-style: none; display: flex; flex-direction: column; gap: 5px; }
+.tut-tips li { font-size: 13.5px; color: #c3cad9; position: relative; padding-left: 15px; line-height: 1.75; }
+.tut-tips li::before {
+  content: '◆';
+  position: absolute;
+  left: 0;
+  color: #b8873a;
+  font-size: 10px;
+  top: .45em;
+}
+
+/* ---------- 小棋盤 ---------- */
+.lesson-board {
+  flex: 0 0 auto;
+  width: 340px;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.mini-wrap { width: 100%; }
+.mini-wrap svg { width: 100%; height: auto; display: block; border-radius: 8px; }
+.mini-wrap.interactive .pt { cursor: pointer; }
+.mini-wrap.interactive .pt:hover { fill: rgba(255, 255, 255, .18); }
+.mini-svg text.co { font-size: 15px; fill: #6b5228; text-anchor: middle; font-family: inherit; }
+.mini-svg text.mv { font-size: 17px; text-anchor: middle; font-family: inherit; font-weight: 700; }
+
+.board-caption { font-size: 12.5px; color: #9aa5bd; text-align: center; }
+
+.board-hint,
+.seq-note {
+  font-size: 13px;
+  line-height: 1.75;
+  background: #12172080;
+  border: 1px solid #262f42;
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: #c3cad9;
+}
+.seq-note .step-no { color: #d9b878; font-weight: 700; margin-right: 6px; }
+
+.claims { margin-top: 6px; display: flex; flex-direction: column; gap: 4px; }
+.claims > div { font-size: 12.5px; color: #aab3c6; }
+
+.mk {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: -1px;
+}
+.mk-win { border: 3px solid #f0c24a; }
+.mk-ok { border: 3px solid #57c97e; }
+.mk-lib { background: #2f9e5a; }
+.mk-no { background: #e0483a; }
+
+.board-tools { display: flex; gap: 6px; flex-wrap: wrap; }
+.board-tools button { font-size: 12.5px; padding: 4px 10px; }
+
+.tut-empty { color: #8f9ab3; padding: 20px; }
+
+#tut-footer {
+  border-top: 1px solid #2a3245;
+  padding: 14px 20px 26px;
+  font-size: 12.5px;
+  color: #8f9ab3;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+/* ---------- 手機 ---------- */
+@media (max-width: 860px) {
+  #tut-body { flex-direction: column; padding: 14px; gap: 14px; }
+  #tut-toc {
+    position: static;
+    flex: none;
+    width: 100%;
+    max-height: 190px;
+  }
+  .lesson-board { width: 100%; }
+  .mini-wrap { max-width: 380px; margin: 0 auto; }
+  #tut-topbar h1 { font-size: 15px; letter-spacing: 1px; }
+  #tut-topbar button, #tut-topbar .btn-link { padding: 4px 10px; font-size: 13px; }
+  .tut-lesson { padding: 13px 14px; }
+  .lesson-text p { font-size: 14.5px; }
+}

@@ -20,7 +20,7 @@
 <meta name="twitter:title" content="3D 棋弈 — 五子棋 × 圍棋">
 <meta name="twitter:description" content="一站兩種棋：五子棋與圍棋（9／13／19 路）。電腦對手、教學、謎題、定式、線上對戰，免安裝、手機也能玩。">
 <meta name="twitter:image" content="https://hbkqoo.github.io/gomoku/og-image.png">
-<link rel="stylesheet" href="style.css?v=17">
+<link rel="stylesheet" href="style.css?v=18">
 </head>
 <body>
 <div id="app">
@@ -46,6 +46,7 @@
       <button id="btn-coach">教練</button>
       <button id="btn-heat" title="AI 思考熱力圖">熱力圖</button>
       <button id="btn-fx" title="落子特效開關">特效</button>
+      <a class="btn-link" id="link-tutorial" href="tutorial.html">📖 新手教學</a>
       <button id="btn-lessons">教學</button>
       <button id="btn-puzzles">謎題</button>
       <button id="btn-openings">定式</button>
@@ -166,6 +167,11 @@
         <label class="chk"><input type="checkbox" id="chk-renju"> 禁手規則（黑棋禁雙活三、雙四、長連）</label>
       </div>
       <button class="primary" id="btn-start">開始</button>
+      <a class="setup-tutorial" href="tutorial.html">
+        <span class="st-icon">📖</span>
+        <span class="st-text"><b>第一次玩？先看新手教學</b>
+          <small>五子棋與圍棋的規則各一整套，每條規則都配一個可以點的小棋盤，能不能下由引擎算給你看</small></span>
+      </a>
     </div>
   </div>
 
@@ -220,6 +226,7 @@
         <div id="lesson-list"></div>
       </div>
       <div class="row">
+        <a class="btn-link" href="tutorial.html">📖 完整規則教學</a>
         <button class="primary" id="btn-lessons-close">關閉</button>
       </div>
     </div>
