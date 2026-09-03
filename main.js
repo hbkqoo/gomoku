@@ -1082,7 +1082,7 @@
   function sideNames() {
     if (mode === 'ai') return humanSide === E.BLACK ? ['你', '電腦'] : ['電腦', '你'];
     if (mode === 'online') return mySide === E.BLACK ? ['你', '對手'] : ['對手', '你'];
-    if (mode === 'auto') return ['大哥', '對手'];
+    if (mode === 'auto') return ['大哥', '挑戰者'];   // 與狀態列、結局字幕同一個稱呼
     return ['黑方', '白方'];   // pvp / lesson / puzzle 一律退回黑方白方
   }
   function setCardText(el, t) { if (el && el.textContent !== t) el.textContent = t; }
@@ -1090,13 +1090,23 @@
     if (!game) return;
     const names = sideNames();
     const caps = G.features.pass && game.captured;
-    const live = !replay.active && G.canMove(game);
+    // 回放時：輪到誰依回放進度（黑先、含虛手交替），提子數依當時盤面推回去，不能拿終局的現況
+    const shown = replay.active ? replay.index : game.moves.length;
+    const turnSide = replay.active ? (shown % 2 === 0 ? E.BLACK : E.WHITE) : (G.canMove(game) ? game.current : 0);
+    const capOf = (c) => {
+      if (!replay.active || !replay.board) return game.captured[c] || 0;
+      const o = c === E.BLACK ? E.WHITE : E.BLACK;
+      let placed = 0, on = 0;
+      for (const m of game.moves.slice(0, shown)) if (!m.pass && m.player === o) placed++;
+      for (const row of replay.board) for (const v of row) if (v === o) on++;
+      return Math.max(0, placed - on);
+    };
     [E.BLACK, E.WHITE].forEach((c, i) => {
       const el = document.getElementById(i === 0 ? 'card-black' : 'card-white');
       if (!el) return;
       setCardText(el.querySelector('.pc-name'), names[i] || (i === 0 ? '黑方' : '白方'));
-      setCardText(el.querySelector('.pc-caps'), caps ? `提子 ${game.captured[c] || 0}` : '');
-      el.classList.toggle('turn', live && game.current === c);
+      setCardText(el.querySelector('.pc-caps'), caps ? `提子 ${capOf(c)}` : '');
+      el.classList.toggle('turn', turnSide === c);
     });
   }
 
@@ -1782,7 +1792,7 @@
   });
 
   /* ---------- 彈窗 ---------- */
-  function openModal(id) { document.getElementById(id).classList.add('show'); }
+  function openModal(id) { setDrawer(false); document.getElementById(id).classList.add('show'); }   // 被動彈出的視窗也要把抽屜收掉，否則關掉視窗後遮罩還擋著棋盤
   function closeModal(id) { document.getElementById(id).classList.remove('show'); }
 
   function openWinModal() {
@@ -2121,6 +2131,8 @@
         lessonState.moves--;
         lessonState.busyAI = false;
         render();
+        lessonStatus();   // 退回後輪到玩家，玩家卡的金框要跟著回來（審查抓到）
+        updateTopbar();
       }, 1100);
       return;
     }
@@ -2635,11 +2647,11 @@
   document.getElementById('copy-answer').addEventListener('click', () => copyField('guest-answer', '已複製回應碼，傳回給朋友吧！'));
   document.getElementById('btn-disconnect').addEventListener('click', () => { onlineDisconnect(); closeModal('modal-online'); });
 
-  /* ---------- 功能抽尜：把次要按鈕收起來，主列只留常用動作 ---------- */
+  /* ---------- 功能抽屜：把次要按鈕收起來，主列只留常用動作 ---------- */
   const drawerEl = document.getElementById('drawer');
   const drawerBackdrop = document.getElementById('drawer-backdrop');
   const btnMenu = document.getElementById('btn-menu');
-  const DRAWER_KEEP_OPEN = ['btn-coach', 'btn-heat', 'btn-fx'];   // 開關類：按了不關抽尜
+  const DRAWER_KEEP_OPEN = ['btn-coach', 'btn-heat', 'btn-fx'];   // 開關類：按了不關抽屜
   const drawerIsOpen = () => drawerEl.classList.contains('open');
   function setDrawer(open) {
     drawerEl.classList.toggle('open', open);
@@ -2653,9 +2665,9 @@
   drawerEl.addEventListener('click', (e) => {
     const t = e.target.closest('button, a');
     if (!t || t.id === 'btn-drawer-close' || DRAWER_KEEP_OPEN.indexOf(t.id) >= 0) return;
-    setDrawer(false);   // 按下會開視窗的項目，順手把抽尜收起來
+    setDrawer(false);   // 按下會開視窗的項目，順手把抽屜收起來
   });
-  // 用 capture 優先接 Esc：抽尜開著時先關抽尜，不要順便把回放也退掉
+  // 用 capture 優先接 Esc：抽屜開著時先關抽屜，不要順便把回放也退掉
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && drawerIsOpen()) { e.stopPropagation(); setDrawer(false); }
   }, true);

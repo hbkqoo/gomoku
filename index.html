@@ -24,7 +24,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@600;700&display=swap">
-<link rel="stylesheet" href="style.css?v=19">
+<link rel="stylesheet" href="style.css?v=20">
 </head>
 <body>
 <div id="splash">
@@ -200,11 +200,11 @@ setTimeout(function () {
       <g id="layer-fx"></g>
       <g id="layer-vignette" pointer-events="none"></g>
     </svg>
-    <div class="pcard" id="card-black">
+    <div class="pcard" id="card-black" role="status" aria-live="polite">
       <svg class="pc-stone" viewBox="0 0 24 24" aria-hidden="true"><defs><radialGradient id="pcg-black" cx="50%" cy="50%" r="50%" fx="34%" fy="28%"><stop offset="0%" stop-color="#9c9ca8"/><stop offset="10%" stop-color="#585862"/><stop offset="45%" stop-color="#26262d"/><stop offset="91%" stop-color="#08080b"/><stop offset="100%" stop-color="#3a3a44"/></radialGradient></defs><circle cx="12" cy="12" r="10.4" fill="url(#pcg-black)"/></svg>
       <span class="pc-txt"><span class="pc-name">黑方</span><span class="pc-caps"></span></span>
     </div>
-    <div class="pcard" id="card-white">
+    <div class="pcard" id="card-white" role="status" aria-live="polite">
       <svg class="pc-stone" viewBox="0 0 24 24" aria-hidden="true"><defs><radialGradient id="pcg-white" cx="50%" cy="50%" r="50%" fx="34%" fy="28%"><stop offset="0%" stop-color="#ffffff"/><stop offset="28%" stop-color="#f7f5ef"/><stop offset="72%" stop-color="#dcd8cd"/><stop offset="93%" stop-color="#bab4a4"/><stop offset="100%" stop-color="#d9d4c7"/></radialGradient></defs><circle cx="12" cy="12" r="10.4" fill="url(#pcg-white)"/></svg>
       <span class="pc-txt"><span class="pc-name">白方</span><span class="pc-caps"></span></span>
     </div>
@@ -490,6 +490,6 @@ setTimeout(function () {
 <script src="openings.js?v=17"></script>
 <script src="puzzles.js?v=17"></script>
 <script src="online.js?v=17"></script>
-<script src="main.js?v=21"></script>
+<script src="main.js?v=22"></script>
 </body>
 </html>
