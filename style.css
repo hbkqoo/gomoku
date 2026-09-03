@@ -23,7 +23,7 @@ html, body, #app {
   flex-wrap: wrap;
 }
 
-#topbar h1 { font-size: 18px; letter-spacing: 2px; color: #d9b878; }
+#topbar h1 { font-family: "Noto Serif TC", "Noto Sans TC", "Microsoft JhengHei", serif; font-size: 18px; letter-spacing: 3px; color: #d9b878; }
 
 #status {
   /* flex-basis 必須是 0：線上對戰的長狀態文字否則會把 #controls 擠到下一行 */
@@ -299,7 +299,7 @@ button.mini { padding: 2px 10px; font-size: 12px; align-self: flex-start; }
   box-shadow: 0 18px 50px rgba(0, 0, 0, .55);
 }
 .panel.wide { width: min(94vw, 520px); }
-.panel h2 { font-size: 20px; color: #d9b878; }
+.panel h2 { font-family: "Noto Serif TC", "Noto Sans TC", "Microsoft JhengHei", serif; font-size: 20px; color: #d9b878; }
 .panel p { font-size: 14px; color: #b9c0d0; }
 
 .field { display: flex; flex-direction: column; gap: 8px; }
@@ -631,3 +631,52 @@ input[type=text]:focus { border-color: #d9b878; }
 .setup-tutorial .st-text { display: flex; flex-direction: column; gap: 3px; }
 .setup-tutorial b { font-size: 14.5px; color: #f2dfae; }
 .setup-tutorial small { font-size: 12px; color: #b9c0d0; line-height: 1.5; }
+
+/* ---------- 載入畫面（splash）：開頁的第一眼，初始化完成後自己淡出並移除 ---------- */
+#splash {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: radial-gradient(120% 100% at 50% 42%, #1b2233 0%, #10141c 55%, #080a10 100%);
+}
+#splash.done { opacity: 0; pointer-events: none; transition: opacity .45s ease; }
+
+#splash .sp-mark {
+  font-family: "Noto Serif TC", "Noto Sans TC", "Microsoft JhengHei", serif;
+  font-weight: 700;
+  font-size: 42px;
+  letter-spacing: 8px;
+  padding-left: 8px;              /* 抵消字距造成的右側空白，視覺上才真的置中 */
+  color: #d9b878;
+  text-shadow: 0 2px 22px rgba(217, 184, 120, .25);
+}
+#splash .sp-sub {
+  font-size: 13px;
+  letter-spacing: 5px;
+  padding-left: 5px;
+  color: #8d93a4;
+}
+
+/* CSS 畫的一顆棋子，慢慢呼吸當載入指示 */
+#splash .sp-stone {
+  width: 30px;
+  height: 30px;
+  margin-top: 18px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 34% 28%, #fffdf6 0%, #efe9d8 40%, #c9c1ad 78%, #a49b86 100%);
+  box-shadow: 0 7px 16px rgba(0, 0, 0, .55), inset 0 -3px 7px rgba(0, 0, 0, .16);
+  animation: sp-breathe 1.6s ease-in-out infinite;
+}
+@keyframes sp-breathe {
+  0%, 100% { transform: scale(.96); }
+  50% { transform: scale(1.04); }
+}
+@media (prefers-reduced-motion: reduce) {
+  #splash .sp-stone { animation: none; }
+  #splash.done { transition: none; }
+}

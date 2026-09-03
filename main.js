@@ -535,6 +535,7 @@
   const fxList = [];      // 進行中的特效：{ kind:'place'|'win', gx, gy, player, line, t0 }
   let fxRAF = null;
   const FX_DUR = { place: 480, win: 1200 };
+  const FX_RIPPLE = 350;  // 落子漣漪的壽命（比 place 短，跟彈跳一起收尾）
   const easeOutBack = (t) => { const c = 1.70158, c3 = c + 1; return 1 + c3 * (t - 1) ** 3 + c * (t - 1) ** 2; };
 
   // 針對「最後落下的一子」觸發特效；勝利時追加勝利特效
@@ -572,9 +573,20 @@
         const c = project(gx2w(f.gx), STONE_H, gx2w(f.gy));
         if (!c) continue;
         const base = F * STONE_R / c.d;
-        // 擴散光環
-        const rr = base * (1 + p * 1.9);
-        out += `<circle cx="${c.x.toFixed(1)}" cy="${c.y.toFixed(1)}" r="${rr.toFixed(1)}" fill="none" stroke="#ffd166" stroke-width="${(2.6 * (1 - p)).toFixed(2)}" opacity="${(0.85 * (1 - p)).toFixed(2)}"/>`;
+        // 板面漣漪：貼著棋盤面往外擴散的細環。圓心用世界座標投影，
+        // 垂直半徑依俯角壓扁（跟影子同一套做法），2D 俯視時 sp_≈1 自然回到正圓。
+        const rp = (now - f.t0) / FX_RIPPLE;
+        if (rp < 1) {
+          const g = project(gx2w(f.gx), 0.02, gx2w(f.gy));
+          if (g) {
+            const e = 1 - (1 - rp) ** 3;   // ease-out
+            const gr = F * STONE_R / g.d;
+            const rrx = gr * (0.62 + e * 2.5);
+            const rry = Math.max(0.6, rrx * sp_);
+            const tint = f.player === E.BLACK ? 'rgba(0,0,0,.35)' : 'rgba(255,255,255,.55)';
+            out += `<ellipse class="fx-ripple" cx="${g.x.toFixed(1)}" cy="${g.y.toFixed(1)}" rx="${rrx.toFixed(1)}" ry="${rry.toFixed(1)}" fill="none" stroke="${tint}" stroke-width="${Math.max(0.8, gr * 0.14 * (1 - e * 0.65)).toFixed(2)}" opacity="${(1 - e).toFixed(2)}"/>`;
+          }
+        }
         // 火花
         const nSp = 7;
         for (let k = 0; k < nSp; k++) {
@@ -826,8 +838,9 @@
       const t = base ? Math.max(0, base.y - s.c.y) * sc : 0;
       st += stoneSVG(s.c.x, s.c.y, rx, ry, t, s.v === E.BLACK, s.op);
       if (last && last.x === s.gx && last.y === s.gy && showLastMark) {
-        // 最後一手：紅色圓環標記
-        st += `<ellipse cx="${s.c.x.toFixed(1)}" cy="${s.c.y.toFixed(1)}" rx="${(rx * 1.28).toFixed(1)}" ry="${(ry * 1.28).toFixed(1)}" fill="none" stroke="#e5484d" stroke-width="2.2" opacity=".9"/>`;
+        // 最後一手：頂面中央一顆小圓點（徑約棋子的 26%），黑子上用暖白、白子上用深色
+        const mk = s.v === E.BLACK ? '#f3e6c8' : '#2a2a30';
+        st += `<ellipse cx="${s.c.x.toFixed(1)}" cy="${s.c.y.toFixed(1)}" rx="${(rx * 0.26).toFixed(1)}" ry="${(ry * 0.26).toFixed(1)}" fill="${mk}"${s.op < 1 ? ` opacity="${s.op.toFixed(2)}"` : ''}/>`;
       }
     }
 
@@ -2695,4 +2708,17 @@
     playMemeEnding,
     endIntro,
   };
+
+  /* ---------- 載入畫面淡出（保底計時器寫在 index.html，初始化再慢也不會擋住畫面） ---------- */
+  (() => {
+    const sp = document.getElementById('splash');
+    if (!sp) return;
+    const close = () => {
+      if (sp.classList.contains('done')) return;
+      sp.classList.add('done');
+      setTimeout(() => sp.remove(), 500);
+    };
+    // 初始化到這裡已經完成；讓 wordmark 至少停留一下再淡出，但不超過保底時間
+    setTimeout(close, Math.max(0, 560 - performance.now()));
+  })();
 })();
