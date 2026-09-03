@@ -106,6 +106,16 @@ node tests/tutorial.test.js    # 新手教學課程資料（524 項：盤面宣�
 node tests/benchmark.js        # 五子棋 AI 強度基準（20 局 seeded 對弈）
 ```
 
+瀏覽器端回歸測試（Playwright 無頭 chromium，約 10 秒、47 項）：
+
+```bash
+node tests/browser-smoke.js    # 落子、悔棋、提子、2D/3D、回正與鎖定、渲染無 NaN、19 路效能、手機視口、教學頁
+```
+
+需要 Playwright 與 chromium（`npx playwright@latest install chromium`），路徑可用
+`PLAYWRIGHT_MODULE`／`CHROME_PATH` 覆寫；環境沒裝時以 exit code 2 結束（測試失敗才是 exit 1）。
+加 `--shot <目錄>` 會在關鍵步驟存截圖，`SMOKE_PERF=0` 可跳過效能門檻。
+
 UI 行為（棋種切換、教學、謎題、熱力圖、終局數子、回放、線上對戰）另以
 Playwright 無頭瀏覽器做端對端測試（含兩分頁真實 WebRTC 握手、圍棋終局全流程）。
 
