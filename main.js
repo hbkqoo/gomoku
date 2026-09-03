@@ -231,6 +231,75 @@
   };
   const statusEl = document.getElementById('status');
 
+  /* ---------- 棋盤材質 ---------- */
+  // 微噪點紋理：只在啟動時用 canvas 產一次，做成 SVG pattern 疊在盤面上。
+  // 用「深色＋可變透明度」而不是灰階＋混合模式，避免瀏覽器不支援 mix-blend-mode 時整塊變灰。
+  (function makeGrainPattern() {
+    try {
+      const N = 192;
+      const c = document.createElement('canvas');
+      c.width = N; c.height = N;
+      const ctx = c.getContext('2d');
+      const img = ctx.createImageData(N, N);
+      let seed = 20260904;
+      const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
+      // 每欄一個基準值（幾個整數頻率的正弦疊加 → 水平方向可無縫重複），再加逐像素細噪
+      const col = [];
+      for (let x = 0; x < N; x++) {
+        const t = (x / N) * Math.PI * 2;
+        col.push(0.5 + 0.22 * Math.sin(t * 7 + 1.3) + 0.16 * Math.sin(t * 19 + 0.4) + 0.12 * Math.sin(t * 41 + 2.2));
+      }
+      for (let y = 0; y < N; y++) {
+        for (let x = 0; x < N; x++) {
+          const a = 0.02 + col[x] * 0.10 + (rnd() - 0.5) * 0.06;
+          const i = (y * N + x) * 4;
+          img.data[i] = 70; img.data[i + 1] = 42; img.data[i + 2] = 12;
+          img.data[i + 3] = Math.max(0, Math.min(255, Math.round(a * 255)));
+        }
+      }
+      ctx.putImageData(img, 0, 0);
+      svg.querySelector('defs').insertAdjacentHTML('beforeend',
+        `<pattern id="p-grain" patternUnits="userSpaceOnUse" width="${N}" height="${N}"><image href="${c.toDataURL()}" width="${N}" height="${N}"/></pattern>`);
+    } catch {}
+  })();
+
+  // 木紋帶：沿 z 方向（面向玩家）、緩慢擺動的窄長多邊形，用世界座標畫所以會隨透視變形。
+  // 固定種子 → 每次開局同一塊板；盤面大小改變時重算。
+  let grainCache = { size: 0, bands: [] };
+  function grainBands() {
+    if (grainCache.size === SIZE) return grainCache.bands;
+    let seed = 1234567 + SIZE * 97;
+    const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
+    const B = BOARD_HALF, bands = [], STEPS = 10;
+    const clampB = (v) => Math.max(-B, Math.min(B, v));
+    let x = -B;
+    while (x < B) {
+      const w = 0.12 + rnd() * 0.5;
+      const amp = 0.05 + rnd() * 0.12, f = 0.25 + rnd() * 0.5, ph = rnd() * Math.PI * 2;
+      const dark = rnd() < 0.55;
+      const op = dark ? 0.05 + rnd() * 0.10 : 0.05 + rnd() * 0.09;
+      const left = [], right = [];
+      for (let i = 0; i <= STEPS; i++) {
+        const z = -B + (2 * B) * i / STEPS;
+        const off = amp * Math.sin(z * f + ph);
+        left.push([clampB(x + off), 0.002, z]);
+        right.push([clampB(x + w + off), 0.002, z]);
+      }
+      bands.push({ pts: left.concat(right.reverse()), fill: dark ? '#5a3610' : '#f6d98c', op: op.toFixed(3) });
+      x += w + 0.04 + rnd() * 0.35;
+    }
+    grainCache = { size: SIZE, bands };
+    return bands;
+  }
+
+  // 世界座標的主光源方向（左上偏前），側面依法向量著色，轉動視角時明暗會跟著變
+  const LIGHT = (() => { const v = [-0.55, 0.8, 0.45]; const l = Math.hypot(...v); return v.map((k) => k / l); })();
+  function shadeRGB(hex, k) {
+    const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+    const f = (v) => Math.max(0, Math.min(255, Math.round(v * k)));
+    return `rgb(${f(r)},${f(g)},${f(b)})`;
+  }
+
   /* ---------- 相機（第一人稱：坐在棋桌旁環顧） ---------- */
   const cam = { yaw: 0, pitch: 0.52, dist: 13.5 };
   let W = 0, H = 0, F = 0, CX = 0, CY = 0;
@@ -612,21 +681,40 @@
 
     /* 棋桌 + 棋盤實體 */
     const T = BOARD_HALF + 5;   // 棋桌比棋盤大一圈，隨盤面大小一起長
-    let b = quad([[-T, -SLAB_H, -T], [T, -SLAB_H, -T], [T, -SLAB_H, T], [-T, -SLAB_H, T]], '#3d2b1a');
+    let b = quad([[-T, -SLAB_H, -T], [T, -SLAB_H, -T], [T, -SLAB_H, T], [-T, -SLAB_H, T]], 'url(#g-table)');
     const B = BOARD_HALF;
+    // 棋盤投在桌面上的柔和陰影：整層只套一次 blur，往光源反方向偏移
+    const S = B + 0.3, ox = 0.45, oz = -0.35, ys = -SLAB_H + 0.001;
+    b += `<g filter="url(#f-soft)">${quad([[-S + ox, ys, -S + oz], [S + ox, ys, -S + oz], [S + ox, ys, S + oz], [-S + ox, ys, S + oz]], 'rgba(0,0,0,.6)')}</g>`;
+
     const top = [[-B, 0, -B], [B, 0, -B], [B, 0, B], [-B, 0, B]];
+    const normals = [[0, 0, -1], [1, 0, 0], [0, 0, 1], [-1, 0, 0]];  // 各邊的外法向量（與 top 的邊序一致）
     const sides = [];
     for (let i = 0; i < 4; i++) {
       const a = top[i], c = top[(i + 1) % 4];
       const mid = toView((a[0] + c[0]) / 2, -SLAB_H / 2, (a[2] + c[2]) / 2);
+      const n = normals[i];
+      const diffuse = Math.max(0, n[0] * LIGHT[0] + n[1] * LIGHT[1] + n[2] * LIGHT[2]);
       sides.push({
         d: mid.d,
         corners: [a, c, [c[0], -SLAB_H, c[2]], [a[0], -SLAB_H, a[2]]],
+        fill: shadeRGB('#a8752f', 0.55 + 0.6 * diffuse),
       });
     }
     sides.sort((p, q) => q.d - p.d);
-    for (const s of sides) b += quad(s.corners, '#8a5f28');
-    b += quad(top, '#c9963f');
+    for (const s of sides) {
+      b += quad(s.corners, s.fill);
+      b += quad(s.corners, 'url(#g-side-shade)');
+    }
+
+    /* 頂面：底色 → 木紋帶 → 微噪點 → 光照 → 光澤 */
+    b += quad(top, '#d7ae5c');
+    let grain = '';
+    for (const g of grainBands()) grain += quad(g.pts, g.fill, `opacity="${g.op}"`);
+    b += `<g>${grain}</g>`;
+    b += quad(top, 'url(#p-grain)');
+    b += quad(top, 'url(#g-toplight)');
+    b += quad(top, 'url(#g-sheen)');
 
     /* 格線 */
     let lines = '';
@@ -635,7 +723,9 @@
       lines += line3d(w, 0.015, -HALF, w, 0.015, HALF);
       lines += line3d(-HALF, 0.015, w, HALF, 0.015, w);
     }
-    b += `<g stroke="#5a3d1a" stroke-width="1.1" opacity=".9">${lines}</g>`;
+    b += `<g stroke="#4a2e0f" stroke-width="1" opacity=".82">${lines}</g>`;
+    /* 頂面邊緣倒角高光：近光側亮、背光側暗 */
+    b += quad(top, 'none', 'stroke="rgba(255,244,210,.5)" stroke-width="1.3" stroke-linejoin="round"');
 
     /* 星位（各棋種／各盤面大小的星位由 GAMES 表決定） */
     for (const [sx, sz] of G.stars(SIZE)) {

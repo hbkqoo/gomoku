@@ -85,6 +85,32 @@
           <stop offset="60%" stop-color="#3d5578"/>
           <stop offset="100%" stop-color="#8a9bb5"/>
         </linearGradient>
+        <!-- 棋桌：中央受光、四周暗下去 -->
+        <radialGradient id="g-table" cx="50%" cy="45%" r="70%">
+          <stop offset="0%" stop-color="#4a3421"/>
+          <stop offset="100%" stop-color="#22170e"/>
+        </radialGradient>
+        <!-- 棋盤側面：上緣亮、下緣暗（疊在依光源著色的底色上） -->
+        <linearGradient id="g-side-shade" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#fff2c8" stop-opacity=".18"/>
+          <stop offset="35%" stop-color="#000" stop-opacity="0"/>
+          <stop offset="100%" stop-color="#000" stop-opacity=".42"/>
+        </linearGradient>
+        <!-- 棋盤頂面：左上主光 → 右下陰影 -->
+        <linearGradient id="g-toplight" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#fff6dc" stop-opacity=".26"/>
+          <stop offset="48%" stop-color="#fff" stop-opacity="0"/>
+          <stop offset="100%" stop-color="#2a1500" stop-opacity=".24"/>
+        </linearGradient>
+        <!-- 棋盤頂面：柔和的光澤區 -->
+        <radialGradient id="g-sheen" cx="40%" cy="28%" r="60%">
+          <stop offset="0%" stop-color="#fff" stop-opacity=".16"/>
+          <stop offset="100%" stop-color="#fff" stop-opacity="0"/>
+        </radialGradient>
+        <!-- 柔邊陰影（整層只套一次） -->
+        <filter id="f-soft" x="-20%" y="-20%" width="140%" height="140%">
+          <feGaussianBlur stdDeviation="7"/>
+        </filter>
         <linearGradient id="g-floor" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stop-color="#4a3a2c"/>
           <stop offset="100%" stop-color="#241c14"/>
@@ -357,6 +383,6 @@
 <script src="openings.js?v=17"></script>
 <script src="puzzles.js?v=17"></script>
 <script src="online.js?v=17"></script>
-<script src="main.js?v=17"></script>
+<script src="main.js?v=18"></script>
 </body>
 </html>
