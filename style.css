@@ -16,8 +16,9 @@ html, body, #app {
   align-items: center;
   gap: 12px;
   padding: 8px 14px;
-  background: rgba(12, 15, 22, .92);
+  background: linear-gradient(180deg, #161c29 0%, rgba(12, 15, 22, .94) 100%);
   border-bottom: 1px solid #2a3245;
+  box-shadow: 0 2px 14px rgba(0, 0, 0, .45);
   z-index: 5;
   flex-wrap: wrap;
 }
@@ -25,12 +26,17 @@ html, body, #app {
 #topbar h1 { font-size: 18px; letter-spacing: 2px; color: #d9b878; }
 
 #status {
-  flex: 1;
-  font-size: 15px;
-  min-width: 120px;
+  /* flex-basis 必須是 0：線上對戰的長狀態文字否則會把 #controls 擠到下一行 */
+  flex: 1 1 0;
+  min-width: 0;
+  font-size: 12.5px;
+  color: #8b96ad;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-#controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+#controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; justify-content: flex-end; margin-left: auto; }
 /* 視角三顆鈕（切換／回正／鎖定）當成一組，換行時不會被拆散 */
 .btn-group { display: inline-flex; gap: 6px; align-items: center; }
 #btn-lock[aria-pressed="true"] { background: #4a3a1c; border-color: #d9b878; color: #f2dfae; }
@@ -50,6 +56,199 @@ button:disabled { opacity: .4; cursor: default; }
 button.primary { background: #b8873a; border-color: #d9b878; color: #16120a; font-weight: 700; }
 button.primary:hover { background: #d9a44a; }
 button.mini { padding: 2px 10px; font-size: 12px; align-self: flex-start; }
+
+/* ---------- 頂列圖示鈕：視角三顆 / 音效 / 抽尜 ---------- */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: 9px;
+  color: #cfd6e4;
+  flex: none;
+}
+.icon-btn .ic {
+  display: block;
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.icon-btn:hover:not(:disabled) { background: #2e3a55; color: #f2dfae; border-color: #4d5a7d; }
+/* 同一顆鈕兩種狀態的圖示：用 aria-pressed 切（main.js 只改屬性，不寫 textContent） */
+#btn-view .ic-to3d, #btn-lock .ic-locked, #btn-sound .ic-snd-off { display: none; }
+#btn-view[aria-pressed="true"] .ic-to2d { display: none; }
+#btn-view[aria-pressed="true"] .ic-to3d { display: block; }
+#btn-lock[aria-pressed="true"] .ic-unlocked { display: none; }
+#btn-lock[aria-pressed="true"] .ic-locked { display: block; }
+#btn-sound[aria-pressed="false"] .ic-snd-on { display: none; }
+#btn-sound[aria-pressed="false"] .ic-snd-off { display: block; }
+#btn-sound[aria-pressed="false"] { color: #8b8371; border-color: #4a4335; background: #1d2130; }
+/* 視角組與前面的動作鈕分開 */
+#view-group { padding-left: 10px; border-left: 1px solid #2a3245; }
+#btn-menu { border-color: #4d5573; }
+#btn-menu[aria-expanded="true"] { background: #b8873a; border-color: #d9b878; color: #16120a; }
+
+/* ---------- 右側抽尜 ---------- */
+#drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 7;
+  background: rgba(5, 7, 12, .5);
+  backdrop-filter: blur(2px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .22s ease;
+}
+#drawer-backdrop.show { opacity: 1; pointer-events: auto; }
+
+#drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 8;
+  width: min(86vw, 300px);
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, rgba(23, 29, 43, .9), rgba(15, 19, 27, .94));
+  backdrop-filter: blur(14px);
+  border-left: 1px solid rgba(217, 184, 120, .3);
+  box-shadow: -18px 0 46px rgba(0, 0, 0, .55);
+  transform: translateX(102%);
+  visibility: hidden;
+  transition: transform .26s cubic-bezier(.22, .7, .25, 1), visibility 0s linear .26s;
+}
+#drawer.open {
+  transform: none;
+  visibility: visible;
+  transition: transform .26s cubic-bezier(.22, .7, .25, 1), visibility 0s;
+}
+.drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px 14px 12px 16px;
+  border-bottom: 1px solid #2a3245;
+}
+.drawer-title { font-size: 15px; letter-spacing: 2px; color: #d9b878; font-weight: 700; }
+.drawer-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 16px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.drawer-group { display: flex; flex-direction: column; gap: 9px; }
+.drawer-label { font-size: 12px; letter-spacing: 1.6px; color: #7d879e; }
+.drawer-items { display: flex; flex-direction: column; gap: 8px; }
+.drawer-items button, .drawer-items .btn-link {
+  width: 100%;
+  text-align: left;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 14.5px;
+  background: rgba(35, 43, 61, .75);
+  border: 1px solid #333d57;
+  white-space: nowrap;
+}
+.drawer-items button:hover, .drawer-items .btn-link:hover { background: #2e3a55; border-color: #4d5a7d; }
+/* 開關類按鈕在抽尜裡也要一眼看出開啟（.on 的金色底見下方規則） */
+.drawer-items button.on { box-shadow: 0 0 14px rgba(217, 184, 120, .35); }
+
+/* ---------- 黑白方玩家卡 ---------- */
+.pcard {
+  position: absolute;
+  top: 12px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 42%;
+  padding: 8px 14px 8px 10px;
+  border-radius: 12px;
+  background: rgba(14, 18, 26, .62);
+  backdrop-filter: blur(9px);
+  border: 1px solid rgba(120, 132, 160, .28);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .4);
+  pointer-events: none;
+  transition: background .2s, border-color .2s;
+}
+#card-black { left: 14px; }
+#card-white { right: 14px; flex-direction: row-reverse; padding: 8px 10px 8px 14px; }
+#card-white .pc-txt { align-items: flex-end; }
+.pc-stone {
+  display: block;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, .55));
+}
+.pc-txt { display: flex; flex-direction: column; gap: 2px; line-height: 1.2; min-width: 0; }
+.pc-name { font-size: 14.5px; font-weight: 700; color: #e8e6df; white-space: nowrap; }
+.pc-caps { font-size: 11.5px; color: #9aa6bf; white-space: nowrap; }
+.pc-caps:empty { display: none; }
+.pcard.turn {
+  background: rgba(32, 26, 14, .68);
+  border-color: #d9b878;
+  animation: pcard-glow 2.4s ease-in-out infinite;
+}
+.pcard.turn .pc-name { color: #f2dfae; }
+@keyframes pcard-glow {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(217, 184, 120, .3), 0 0 16px rgba(217, 184, 120, .2), 0 6px 20px rgba(0, 0, 0, .45); }
+  50% { box-shadow: 0 0 0 1px rgba(217, 184, 120, .52), 0 0 28px rgba(217, 184, 120, .4), 0 6px 20px rgba(0, 0, 0, .45); }
+}
+
+/* ---------- 手機版：主列單行橫捲，棋盤區拿回螢幕 ---------- */
+@media (max-width: 640px) {
+  #topbar { gap: 8px; padding: 6px 8px; flex-wrap: nowrap; }
+  #topbar h1 { flex: none; font-size: 14px; letter-spacing: 1px; white-space: nowrap; }
+  #status { display: none; }
+  #controls {
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    gap: 6px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 2px 0;
+    touch-action: pan-x;
+    scrollbar-width: none;
+  }
+  #controls::-webkit-scrollbar { display: none; }
+  #controls > * { flex: 0 0 auto; }
+  /* 主列橫捲時 ☰ 永遠點得到：黏在捲動區右緣，其他鈕從它底下捲過去 */
+  #controls > #btn-menu {
+    position: sticky;
+    right: 0;
+    z-index: 1;
+    box-shadow: -12px 0 14px rgba(15, 19, 28, .95);
+  }
+  #controls button, #controls .btn-link { padding: 5px 10px; font-size: 13px; }
+  #controls .icon-btn { width: 30px; height: 30px; padding: 0; }
+  #controls .icon-btn .ic { width: 17px; height: 17px; }
+  #view-group { padding-left: 8px; }
+  .pcard {
+    top: 8px;
+    gap: 6px;
+    max-width: 44%;
+    padding: 4px 10px 4px 5px;
+    border-radius: 999px;
+  }
+  #card-black { left: 8px; }
+  #card-white { right: 8px; padding: 4px 5px 4px 10px; }
+  .pc-stone { width: 20px; height: 20px; }
+  .pc-txt { flex-direction: row; align-items: baseline; gap: 6px; }
+  .pc-name { font-size: 12.5px; }
+  .pc-caps { font-size: 11px; }
+}
+
 
 #stage { position: relative; flex: 1; }
 
