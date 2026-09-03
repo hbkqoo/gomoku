@@ -292,6 +292,20 @@
     return bands;
   }
 
+  // 一顆棋子的 SVG：本體（露出下緣弧）＋ 頂面 ＋（夠大時）獨立高光點。
+  // 高光與背光側的邊緣反光已烘進 g-black／g-white 的 focal gradient，遠景不必多畫節點：
+  // 19 路填滿 361 顆時每顆節點數直接決定拖曳幀率。
+  // t 是下緣在螢幕上露出的厚度（俯視時為 0，視角越低越厚）。
+  function stoneSVG(cx, cy, rx, ry, t, isBlack, op) {
+    const c = isBlack ? 'black' : 'white';
+    const X = cx.toFixed(1), Y = cy.toFixed(1), RX = rx.toFixed(1), RY = ry.toFixed(1);
+    let s = '';
+    if (t > 1.2) s += `<ellipse cx="${X}" cy="${(cy + t / 2).toFixed(1)}" rx="${RX}" ry="${(ry + t / 2).toFixed(1)}" fill="url(#g-side-${c})"/>`;
+    s += `<ellipse cx="${X}" cy="${Y}" rx="${RX}" ry="${RY}" fill="url(#g-${c})"${isBlack ? '' : ' stroke="rgba(40,30,10,.22)" stroke-width=".8"'}/>`;
+    if (rx > 18) s += `<ellipse cx="${(cx - rx * 0.3).toFixed(1)}" cy="${(cy - ry * 0.36).toFixed(1)}" rx="${(rx * 0.3).toFixed(1)}" ry="${(ry * 0.22).toFixed(1)}" fill="url(#g-spec)" opacity="${isBlack ? '.7' : '.8'}"/>`;
+    return op < 1 ? `<g opacity="${op.toFixed(2)}">${s}</g>` : s;
+  }
+
   // 世界座標的主光源方向（左上偏前），側面依法向量著色，轉動視角時明暗會跟著變
   const LIGHT = (() => { const v = [-0.55, 0.8, 0.45]; const l = Math.hypot(...v); return v.map((k) => k / l); })();
   function shadeRGB(hex, k) {
@@ -782,17 +796,21 @@
       fxList.filter((f) => f.kind === 'place').map((f) => [f.gy * SIZE + f.gx, f.t0])
     ) : null;
     for (const s of items) {
-      let rx = F * STONE_R / s.c.d, ry = rx * squash;
+      let rx = F * STONE_R / s.c.d, ry = rx * squash, sc = 1;
       if (popMap) {
         const t0 = popMap.get(s.gy * SIZE + s.gx);
         if (t0 !== undefined) {
           const pp = (fxNow - t0) / 200;
-          if (pp < 1) { const sc = Math.max(0.15, easeOutBack(Math.max(0, pp))); rx *= sc; ry *= sc; }
+          if (pp < 1) { sc = Math.max(0.15, easeOutBack(Math.max(0, pp))); rx *= sc; ry *= sc; }
         }
       }
-      const shp = project(s.wx + 0.08, 0.01, s.wz + 0.08);
-      if (shp) sh += `<ellipse cx="${shp.x.toFixed(1)}" cy="${shp.y.toFixed(1)}" rx="${(rx * 1.02).toFixed(1)}" ry="${(rx * sp_ * 0.95).toFixed(1)}" fill="rgba(0,0,0,${(0.28 * s.op).toFixed(2)})"/>`;
-      st += `<ellipse cx="${s.c.x.toFixed(1)}" cy="${s.c.y.toFixed(1)}" rx="${rx.toFixed(1)}" ry="${ry.toFixed(1)}" fill="url(#g-${s.v === E.BLACK ? 'black' : 'white'})"${s.op < 1 ? ` opacity="${s.op.toFixed(2)}"` : ''}/>`;
+      // 影子往光源反方向（+x、-z）偏移；徑向漸層讓接觸處最深、外圍散開
+      const shp = project(s.wx + 0.13, 0.01, s.wz - 0.1);
+      if (shp) sh += `<ellipse cx="${shp.x.toFixed(1)}" cy="${shp.y.toFixed(1)}" rx="${(rx * 1.3).toFixed(1)}" ry="${(rx * sp_ * 1.3).toFixed(1)}" fill="url(#g-stone-shadow)"${s.op < 1 ? ` opacity="${s.op.toFixed(2)}"` : ''}/>`;
+      // 側面厚度：棋子中心高度投影到板面的螢幕距離（俯視為 0）
+      const base = project(s.wx, 0.06, s.wz);
+      const t = base ? Math.max(0, base.y - s.c.y) * sc : 0;
+      st += stoneSVG(s.c.x, s.c.y, rx, ry, t, s.v === E.BLACK, s.op);
       if (last && last.x === s.gx && last.y === s.gy && showLastMark) {
         // 最後一手：紅色圓環標記
         st += `<ellipse cx="${s.c.x.toFixed(1)}" cy="${s.c.y.toFixed(1)}" rx="${(rx * 1.28).toFixed(1)}" ry="${(ry * 1.28).toFixed(1)}" fill="none" stroke="#e5484d" stroke-width="2.2" opacity=".9"/>`;
@@ -804,7 +822,8 @@
       const c = project(gx2w(hoverCell.gx), STONE_H, gx2w(hoverCell.gy));
       if (c) {
         const rx = F * STONE_R / c.d;
-        st += `<ellipse cx="${c.x.toFixed(1)}" cy="${c.y.toFixed(1)}" rx="${rx.toFixed(1)}" ry="${(rx * squash).toFixed(1)}" fill="url(#g-${game.current === E.BLACK ? 'black' : 'white'})" opacity=".45"/>`;
+        const base = project(gx2w(hoverCell.gx), 0.06, gx2w(hoverCell.gy));
+        st += stoneSVG(c.x, c.y, rx, rx * squash, base ? Math.max(0, base.y - c.y) : 0, game.current === E.BLACK, 0.45);
       }
     }
     layers.stones.innerHTML = sh + st;

@@ -70,15 +70,42 @@
   <main id="stage">
     <svg id="scene" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid slice">
       <defs>
-        <radialGradient id="g-black" cx="35%" cy="30%" r="80%">
-          <stop offset="0%" stop-color="#6a6a72"/>
-          <stop offset="45%" stop-color="#26262c"/>
-          <stop offset="100%" stop-color="#050507"/>
+        <!-- 棋子頂面：黑＝板岩（深灰帶一點藍）、白＝蛤碁石（暖白） -->
+        <!-- focal 點偏左上：高光在左上、最後 8% 是全圈邊緣反光（背光側被拉長所以較明顯） -->
+        <radialGradient id="g-black" cx="50%" cy="50%" r="50%" fx="34%" fy="28%">
+          <stop offset="0%" stop-color="#9c9ca8"/>
+          <stop offset="10%" stop-color="#585862"/>
+          <stop offset="45%" stop-color="#26262d"/>
+          <stop offset="91%" stop-color="#08080b"/>
+          <stop offset="100%" stop-color="#3a3a44"/>
         </radialGradient>
-        <radialGradient id="g-white" cx="35%" cy="30%" r="80%">
+        <radialGradient id="g-white" cx="50%" cy="50%" r="50%" fx="34%" fy="28%">
           <stop offset="0%" stop-color="#ffffff"/>
-          <stop offset="55%" stop-color="#e8e6df"/>
-          <stop offset="100%" stop-color="#b5b0a3"/>
+          <stop offset="28%" stop-color="#f7f5ef"/>
+          <stop offset="72%" stop-color="#dcd8cd"/>
+          <stop offset="93%" stop-color="#bab4a4"/>
+          <stop offset="100%" stop-color="#d9d4c7"/>
+        </radialGradient>
+        <!-- 棋子側面（低視角才看得到的厚度） -->
+        <linearGradient id="g-side-black" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#3a3a42"/>
+          <stop offset="100%" stop-color="#050507"/>
+        </linearGradient>
+        <linearGradient id="g-side-white" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#ebe7dc"/>
+          <stop offset="100%" stop-color="#a39d8e"/>
+        </linearGradient>
+        <!-- 高光點 -->
+        <radialGradient id="g-spec" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="#fff" stop-opacity=".95"/>
+          <stop offset="55%" stop-color="#fff" stop-opacity=".3"/>
+          <stop offset="100%" stop-color="#fff" stop-opacity="0"/>
+        </radialGradient>
+        <!-- 棋子影子：接觸處最深、外圍散開（不用 filter） -->
+        <radialGradient id="g-stone-shadow" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="#000" stop-opacity=".6"/>
+          <stop offset="45%" stop-color="#000" stop-opacity=".4"/>
+          <stop offset="100%" stop-color="#000" stop-opacity="0"/>
         </radialGradient>
         <linearGradient id="g-sky" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stop-color="#1b2a4a"/>
@@ -383,6 +410,6 @@
 <script src="openings.js?v=17"></script>
 <script src="puzzles.js?v=17"></script>
 <script src="online.js?v=17"></script>
-<script src="main.js?v=18"></script>
+<script src="main.js?v=19"></script>
 </body>
 </html>
