@@ -303,7 +303,7 @@
     let s = '';
     if (t > 1.2) s += `<ellipse cx="${X}" cy="${(cy + t / 2).toFixed(1)}" rx="${RX}" ry="${(ry + t / 2).toFixed(1)}" fill="url(#g-side-${c})"/>`;
     s += `<ellipse cx="${X}" cy="${Y}" rx="${RX}" ry="${RY}" fill="url(#g-${c})"${isBlack ? '' : ' stroke="rgba(40,30,10,.22)" stroke-width=".8"'}/>`;
-    if (rx > 18) s += `<ellipse cx="${(cx - rx * 0.3).toFixed(1)}" cy="${(cy - ry * 0.36).toFixed(1)}" rx="${(rx * 0.3).toFixed(1)}" ry="${(ry * 0.22).toFixed(1)}" fill="url(#g-spec)" opacity="${isBlack ? '.7' : '.8'}"/>`;
+    if (rx > 26) s += `<ellipse cx="${(cx - rx * 0.3).toFixed(1)}" cy="${(cy - ry * 0.36).toFixed(1)}" rx="${(rx * 0.3).toFixed(1)}" ry="${(ry * 0.22).toFixed(1)}" fill="url(#g-spec)" opacity="${isBlack ? '.7' : '.8'}"/>`;
     return op < 1 ? `<g opacity="${op.toFixed(2)}">${s}</g>` : s;
   }
 
@@ -570,9 +570,6 @@
     for (const f of fxList) {
       const p = Math.min(1, (now - f.t0) / FX_DUR[f.kind]);
       if (f.kind === 'place') {
-        const c = project(gx2w(f.gx), STONE_H, gx2w(f.gy));
-        if (!c) continue;
-        const base = F * STONE_R / c.d;
         // 板面漣漪：貼著棋盤面往外擴散的細環。圓心用世界座標投影，
         // 垂直半徑依俯角壓扁（跟影子同一套做法），2D 俯視時 sp_≈1 自然回到正圓。
         const rp = (now - f.t0) / FX_RIPPLE;
@@ -586,15 +583,6 @@
             const tint = f.player === E.BLACK ? 'rgba(0,0,0,.35)' : 'rgba(255,255,255,.55)';
             out += `<ellipse class="fx-ripple" cx="${g.x.toFixed(1)}" cy="${g.y.toFixed(1)}" rx="${rrx.toFixed(1)}" ry="${rry.toFixed(1)}" fill="none" stroke="${tint}" stroke-width="${Math.max(0.8, gr * 0.14 * (1 - e * 0.65)).toFixed(2)}" opacity="${(1 - e).toFixed(2)}"/>`;
           }
-        }
-        // 火花
-        const nSp = 7;
-        for (let k = 0; k < nSp; k++) {
-          const ang = (k / nSp) * Math.PI * 2 + f.gx * 0.7 + f.gy * 1.3;
-          const dist = base * (0.3 + p * 2.2);
-          const sx = c.x + Math.cos(ang) * dist, sy = c.y + Math.sin(ang) * dist * 0.6;
-          const sr = Math.max(0.5, base * 0.12 * (1 - p));
-          out += `<circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="${sr.toFixed(1)}" fill="#ffe08a" opacity="${(0.9 * (1 - p)).toFixed(2)}"/>`;
         }
       } else if (f.kind === 'win') {
         // 勝利：從連線中點爆出的衝擊波環 + 粒子
@@ -810,7 +798,7 @@
         if (scoring.active && scoring.dead.has(s.gy * SIZE + s.gx)) op *= 0.28;
         if (op <= 0) return null;
         const c = project(wx, wy, wz);
-        return c ? { ...s, c, op, wx, wz } : null;
+        return c ? { ...s, c, op, wx, wy, wz } : null;
       })
       .filter(Boolean)
       .sort((a, b2) => b2.c.d - a.c.d);
@@ -830,11 +818,13 @@
           if (pp < 1) { sc = Math.max(0.15, easeOutBack(Math.max(0, pp))); rx *= sc; ry *= sc; }
         }
       }
-      // 影子往光源反方向（+x、-z）偏移；徑向漸層讓接觸處最深、外圍散開
-      const shp = project(s.wx + 0.13, 0.01, s.wz - 0.1);
-      if (shp) sh += `<ellipse cx="${shp.x.toFixed(1)}" cy="${shp.y.toFixed(1)}" rx="${(rx * 1.3).toFixed(1)}" ry="${(rx * sp_ * 1.3).toFixed(1)}" fill="url(#g-stone-shadow)"${s.op < 1 ? ` opacity="${s.op.toFixed(2)}"` : ''}/>`;
-      // 側面厚度：棋子中心高度投影到板面的螢幕距離（俯視為 0）
-      const base = project(s.wx, 0.06, s.wz);
+      // 影子：在螢幕座標往右下偏（高光烘在 gradient 的左上，兩者固定於螢幕才不會轉了視角就同側）；
+      // 徑向漸層讓接觸處最深、外圍散開
+      const shp = project(s.wx, 0.01, s.wz);
+      if (shp) sh += `<ellipse cx="${(shp.x + rx * 0.16).toFixed(1)}" cy="${(shp.y + rx * sp_ * 0.14).toFixed(1)}" rx="${(rx * 1.3).toFixed(1)}" ry="${(rx * sp_ * 1.3).toFixed(1)}" fill="url(#g-stone-shadow)"${s.op < 1 ? ` opacity="${s.op.toFixed(2)}"` : ''}/>`;
+      // 側面厚度：棋子中心往下 0.18 的投影距離（俯視為 0）。用棋子自身的高度算，
+      // 逃跑動畫把棋子抬高時厚度才不會跟著變成一根柱子（審查抓到）
+      const base = project(s.wx, s.wy - 0.18, s.wz);
       const t = base ? Math.max(0, base.y - s.c.y) * sc : 0;
       st += stoneSVG(s.c.x, s.c.y, rx, ry, t, s.v === E.BLACK, s.op);
       if (last && last.x === s.gx && last.y === s.gy && showLastMark) {
