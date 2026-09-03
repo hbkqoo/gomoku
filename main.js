@@ -228,6 +228,7 @@
     board: document.getElementById('layer-board'),
     stones: document.getElementById('layer-stones'),
     fx: document.getElementById('layer-fx'),
+    vig: document.getElementById('layer-vignette'),
   };
   const statusEl = document.getElementById('status');
 
@@ -323,6 +324,8 @@
     F = Math.min(W, H) * 0.78;
     CX = W / 2; CY = H * 0.5;
     svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    // 暗角是靜態的，只在尺寸改變時重畫一次
+    layers.vig.innerHTML = `<rect x="0" y="0" width="${W}" height="${H}" fill="url(#g-vignette)"/>`;
     render();
   }
 
@@ -687,15 +690,24 @@
 
     if (intro.active) { renderNeonIntro(); return; }
 
-    /* 背景：天空 + 地板（以地平線分界） */
+    /* 背景：室內——牆面 + 地板（以地平線分界），地平線用漸層柔化，牆上有吊燈的光暈 */
     const horizon = Math.max(0, Math.min(H, CY - F * Math.tan(cam.pitch)));
-    let bg = `<rect x="0" y="0" width="${W}" height="${horizon.toFixed(1)}" fill="url(#g-sky)"/>`;
-    bg += `<rect x="0" y="${horizon.toFixed(1)}" width="${W}" height="${(H - horizon).toFixed(1)}" fill="url(#g-floor)"/>`;
+    const hz = horizon.toFixed(1);
+    let bg = `<rect x="0" y="0" width="${W}" height="${hz}" fill="url(#g-sky)"/>`;
+    bg += `<rect x="0" y="${hz}" width="${W}" height="${(H - horizon).toFixed(1)}" fill="url(#g-floor)"/>`;
+    bg += `<rect x="0" y="${hz}" width="${W}" height="${(H * 0.08).toFixed(1)}" fill="url(#g-horizon)"/>`;
+    const bc = project(0, -SLAB_H, 0);   // 棋桌中心的螢幕位置：燈光以它為中心
+    const lampX = bc ? bc.x : CX;
+    bg += `<ellipse cx="${lampX.toFixed(1)}" cy="${(horizon - H * 0.04).toFixed(1)}" rx="${(W * 0.32).toFixed(1)}" ry="${(H * 0.22).toFixed(1)}" fill="url(#g-lamp)" opacity=".7"/>`;
     layers.bg.innerHTML = bg;
 
     /* 棋桌 + 棋盤實體 */
     const T = BOARD_HALF + 5;   // 棋桌比棋盤大一圈，隨盤面大小一起長
-    let b = quad([[-T, -SLAB_H, -T], [T, -SLAB_H, -T], [T, -SLAB_H, T], [-T, -SLAB_H, T]], 'url(#g-table)');
+    const tableQ = [[-T, -SLAB_H, -T], [T, -SLAB_H, -T], [T, -SLAB_H, T], [-T, -SLAB_H, T]];
+    let b = quad(tableQ, 'url(#g-table)');
+    b += quad(tableQ, 'url(#p-grain)', 'opacity=".6"');
+    // 燈光落在桌面上的光池（畫在桌面之後、棋盤之前，所以只照桌面）
+    if (bc) b += `<ellipse cx="${bc.x.toFixed(1)}" cy="${bc.y.toFixed(1)}" rx="${(W * 0.6).toFixed(1)}" ry="${(H * 0.34 * (0.4 + 0.6 * sp_)).toFixed(1)}" fill="url(#g-lamp)"/>`;
     const B = BOARD_HALF;
     // 棋盤投在桌面上的柔和陰影：整層只套一次 blur，往光源反方向偏移
     const S = B + 0.3, ox = 0.45, oz = -0.35, ys = -SLAB_H + 0.001;
@@ -1350,7 +1362,7 @@
   const MAX_REWINDS = 3;
   const auto = { timer: null, paused: false, speed: 1, rewinds: 0, ended: false };
   const flee = { active: false, progress: 0 };
-  const SKY_NIGHT = ['#1b2a4a', '#3d5578', '#8a9bb5'];
+  const SKY_NIGHT = ['#0a0908', '#1c1613', '#3a2d22'];   // 與 index.html 的 #g-sky 一致（室內暗牆）
   const SKY_DAWN = ['#f7b267', '#f4845f', '#ffd9a0'];
   const flashEl = document.getElementById('flash');
   const memeEl = document.getElementById('meme');

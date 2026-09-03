@@ -107,11 +107,29 @@
           <stop offset="45%" stop-color="#000" stop-opacity=".4"/>
           <stop offset="100%" stop-color="#000" stop-opacity="0"/>
         </radialGradient>
+        <!-- 牆面（室內、暗、下緣被燈光帶暖）；「天亮了」結局會把這三個 stop 漸變成晨光，色值要與 main.js 的 SKY_NIGHT 一致 -->
         <linearGradient id="g-sky" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="#1b2a4a"/>
-          <stop offset="60%" stop-color="#3d5578"/>
-          <stop offset="100%" stop-color="#8a9bb5"/>
+          <stop offset="0%" stop-color="#0a0908"/>
+          <stop offset="60%" stop-color="#1c1613"/>
+          <stop offset="100%" stop-color="#3a2d22"/>
         </linearGradient>
+        <!-- 地平線柔化帶：從牆的底色淡出到透明，蓋在地板最遠處 -->
+        <linearGradient id="g-horizon" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#3a2d22"/>
+          <stop offset="100%" stop-color="#3a2d22" stop-opacity="0"/>
+        </linearGradient>
+        <!-- 吊燈打在桌面與牆上的暖光 -->
+        <radialGradient id="g-lamp" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="#ffd9a0" stop-opacity=".34"/>
+          <stop offset="55%" stop-color="#ffc070" stop-opacity=".12"/>
+          <stop offset="100%" stop-color="#ff9a40" stop-opacity="0"/>
+        </radialGradient>
+        <!-- 四角暗角（整層靜態，resize 時才重畫） -->
+        <radialGradient id="g-vignette" cx="50%" cy="46%" r="72%">
+          <stop offset="0%" stop-color="#000" stop-opacity="0"/>
+          <stop offset="58%" stop-color="#000" stop-opacity="0"/>
+          <stop offset="100%" stop-color="#000" stop-opacity=".62"/>
+        </radialGradient>
         <!-- 棋桌：中央受光、四周暗下去 -->
         <radialGradient id="g-table" cx="50%" cy="45%" r="70%">
           <stop offset="0%" stop-color="#4a3421"/>
@@ -139,8 +157,8 @@
           <feGaussianBlur stdDeviation="7"/>
         </filter>
         <linearGradient id="g-floor" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="#4a3a2c"/>
-          <stop offset="100%" stop-color="#241c14"/>
+          <stop offset="0%" stop-color="#1e1610"/>
+          <stop offset="100%" stop-color="#0c0906"/>
         </linearGradient>
         <radialGradient id="g-lantern" cx="50%" cy="50%" r="50%">
           <stop offset="0%" stop-color="#ffe4b0"/>
@@ -157,6 +175,7 @@
       <g id="layer-board"></g>
       <g id="layer-stones"></g>
       <g id="layer-fx"></g>
+      <g id="layer-vignette" pointer-events="none"></g>
     </svg>
     <div id="score-bar">
       <span id="score-text"></span>
@@ -410,6 +429,6 @@
 <script src="openings.js?v=17"></script>
 <script src="puzzles.js?v=17"></script>
 <script src="online.js?v=17"></script>
-<script src="main.js?v=19"></script>
+<script src="main.js?v=20"></script>
 </body>
 </html>
