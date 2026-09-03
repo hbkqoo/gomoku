@@ -407,12 +407,13 @@
     svg.classList.toggle('view-2d', !is3d);
     svg.classList.toggle('locked', view.locked);
 
+    // 圖示鈕：只改 aria-pressed 與 title，圖示由 CSS 依 aria-pressed 切換
+    // （千萬不能再寫 textContent，會把裡面的 inline SVG 蓋掉）
     const btnView = document.getElementById('btn-view');
-    btnView.textContent = is3d ? '2D 視角' : '3D 視角';
+    btnView.setAttribute('aria-pressed', is3d ? 'false' : 'true');
     btnView.title = is3d ? '切換成 2D 俯視（從正上方直視棋盤）' : '切回 3D 立體視角';
 
     const btnLock = document.getElementById('btn-lock');
-    btnLock.textContent = view.locked ? '🔒 已鎖定' : '🔓 鎖定視角';
     btnLock.setAttribute('aria-pressed', view.locked ? 'true' : 'false');
     btnLock.title = view.locked
       ? '目前已鎖定：拖曳與縮放不會改變視角（「回正」仍可用）'
@@ -986,7 +987,7 @@
   }
 
   /* ---------- 遊戲流程 ---------- */
-  function setStatus(t) { statusEl.textContent = t; }
+  function setStatus(t) { statusEl.textContent = t; updatePlayerCards(); }
 
   // 圍棋的狀態列：輪次 + 提子數 + 終局結果
   function goTurnText() {
@@ -1066,7 +1067,33 @@
     document.getElementById('btn-coach').classList.toggle('on', coachOn);
     document.getElementById('btn-heat').classList.toggle('on', heatOn);
     document.getElementById('btn-fx').classList.toggle('on', fxOn);
-    document.getElementById('btn-sound').textContent = sound.enabled ? '🔊' : '🔇';
+    const btnSound = document.getElementById('btn-sound');
+    btnSound.setAttribute('aria-pressed', sound.enabled ? 'true' : 'false');
+    btnSound.title = sound.enabled ? '音效：開（點一下靜音）' : '音效：靜音（點一下打開）';
+    updatePlayerCards();
+  }
+
+  /* ---------- 兩側玩家卡：輪到誰、提子數 ----------
+     只在「狀態改變」時寫（setStatus / updateTopbar），不跟著每幀 render 重寫 DOM。 */
+  function sideNames() {
+    if (mode === 'ai') return humanSide === E.BLACK ? ['你', '電腦'] : ['電腦', '你'];
+    if (mode === 'online') return mySide === E.BLACK ? ['你', '對手'] : ['對手', '你'];
+    if (mode === 'auto') return ['大哥', '對手'];
+    return ['黑方', '白方'];   // pvp / lesson / puzzle 一律退回黑方白方
+  }
+  function setCardText(el, t) { if (el && el.textContent !== t) el.textContent = t; }
+  function updatePlayerCards() {
+    if (!game) return;
+    const names = sideNames();
+    const caps = G.features.pass && game.captured;
+    const live = !replay.active && G.canMove(game);
+    [E.BLACK, E.WHITE].forEach((c, i) => {
+      const el = document.getElementById(i === 0 ? 'card-black' : 'card-white');
+      if (!el) return;
+      setCardText(el.querySelector('.pc-name'), names[i] || (i === 0 ? '黑方' : '白方'));
+      setCardText(el.querySelector('.pc-caps'), caps ? `提子 ${game.captured[c] || 0}` : '');
+      el.classList.toggle('turn', live && game.current === c);
+    });
   }
 
   function afterMove() {
@@ -1876,6 +1903,7 @@
     const h = document.getElementById('app-title');
     if (h) h.textContent = G.heading;
     applyFeatureVisibility();
+    updatePlayerCards();
   }
 
   document.getElementById('btn-start').addEventListener('click', () => {
@@ -2600,6 +2628,31 @@
   document.getElementById('copy-offer').addEventListener('click', () => copyField('host-offer', '已複製邀請碼，傳給朋友吧！'));
   document.getElementById('copy-answer').addEventListener('click', () => copyField('guest-answer', '已複製回應碼，傳回給朋友吧！'));
   document.getElementById('btn-disconnect').addEventListener('click', () => { onlineDisconnect(); closeModal('modal-online'); });
+
+  /* ---------- 功能抽尜：把次要按鈕收起來，主列只留常用動作 ---------- */
+  const drawerEl = document.getElementById('drawer');
+  const drawerBackdrop = document.getElementById('drawer-backdrop');
+  const btnMenu = document.getElementById('btn-menu');
+  const DRAWER_KEEP_OPEN = ['btn-coach', 'btn-heat', 'btn-fx'];   // 開關類：按了不關抽尜
+  const drawerIsOpen = () => drawerEl.classList.contains('open');
+  function setDrawer(open) {
+    drawerEl.classList.toggle('open', open);
+    drawerEl.setAttribute('aria-hidden', open ? 'false' : 'true');
+    drawerBackdrop.classList.toggle('show', open);
+    btnMenu.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+  btnMenu.addEventListener('click', () => setDrawer(!drawerIsOpen()));
+  drawerBackdrop.addEventListener('click', () => setDrawer(false));
+  document.getElementById('btn-drawer-close').addEventListener('click', () => setDrawer(false));
+  drawerEl.addEventListener('click', (e) => {
+    const t = e.target.closest('button, a');
+    if (!t || t.id === 'btn-drawer-close' || DRAWER_KEEP_OPEN.indexOf(t.id) >= 0) return;
+    setDrawer(false);   // 按下會開視窗的項目，順手把抽尜收起來
+  });
+  // 用 capture 優先接 Esc：抽尜開著時先關抽尜，不要順便把回放也退掉
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && drawerIsOpen()) { e.stopPropagation(); setDrawer(false); }
+  }, true);
 
   /* ---------- 啟動 ---------- */
   window.addEventListener('resize', resize);

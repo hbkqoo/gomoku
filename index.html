@@ -43,27 +43,32 @@
       </span>
       <button id="btn-replay" style="display:none">回放</button>
       <button id="btn-hint" style="display:none">提示</button>
-      <button id="btn-coach">教練</button>
-      <button id="btn-heat" title="AI 思考熱力圖">熱力圖</button>
-      <button id="btn-fx" title="落子特效開關">特效</button>
-      <a class="btn-link" id="link-tutorial" href="tutorial.html">📖 新手教學</a>
-      <button id="btn-lessons">教學</button>
-      <button id="btn-puzzles">謎題</button>
-      <button id="btn-openings">定式</button>
-      <button id="btn-online">連線</button>
-      <button id="btn-new">新對局</button>
+      <button class="primary" id="btn-new">新對局</button>
       <button id="btn-undo">悔棋</button>
       <span id="go-ctrl">
         <button id="btn-pass" title="這一手不下（雙方連續虛手即進入結算）">虛手</button>
         <button id="btn-resign" title="認輸，結束這一局">認輸</button>
       </span>
-      <button id="btn-rank">排行榜</button>
-      <span class="btn-group">
-        <button id="btn-view">2D 視角</button>
-        <button id="btn-recenter" title="把視角方向、俯角與縮放回到預設值">⟲ 回正</button>
-        <button id="btn-lock" aria-pressed="false" title="鎖定視角，避免下棋時不小心拖動角度">🔓 鎖定視角</button>
+      <span class="btn-group" id="view-group">
+        <button class="icon-btn" id="btn-view" aria-pressed="false" aria-label="切換視角" title="切換成 2D 俯視（從正上方直視棋盤）">
+          <svg class="ic ic-to2d" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="2.5"/><path d="M3.5 9.2h17M3.5 14.8h17M9.2 3.5v17M14.8 3.5v17"/></svg>
+          <svg class="ic ic-to3d" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.6 20.8 7.3v9.4L12 21.4 3.2 16.7V7.3Z"/><path d="M3.2 7.3 12 12l8.8-4.7M12 12v9.4"/></svg>
+        </button>
+        <button class="icon-btn" id="btn-recenter" aria-label="回正視角" title="把視角方向、俯角與縮放回到預設值">
+          <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.2 12a8.2 8.2 0 1 1-2.4-5.8"/><path d="M20.4 3.2v5.2h-5.2"/><circle cx="12" cy="12" r="2.1" fill="currentColor" stroke="none"/></svg>
+        </button>
+        <button class="icon-btn" id="btn-lock" aria-pressed="false" aria-label="鎖定視角" title="鎖定視角，避免下棋時不小心拖動角度">
+          <svg class="ic ic-unlocked" viewBox="0 0 24 24" aria-hidden="true"><rect x="4.5" y="10.5" width="15" height="10.2" rx="2.4"/><path d="M8.4 10.5V7.2a3.6 3.6 0 0 1 6.9-1.4"/><circle cx="12" cy="15.6" r="1.5" fill="currentColor" stroke="none"/></svg>
+          <svg class="ic ic-locked" viewBox="0 0 24 24" aria-hidden="true"><rect x="4.5" y="10.5" width="15" height="10.2" rx="2.4"/><path d="M8.4 10.5V7.2a3.6 3.6 0 0 1 7.2 0v3.3"/><circle cx="12" cy="15.6" r="1.5" fill="currentColor" stroke="none"/></svg>
+        </button>
       </span>
-      <button id="btn-sound" title="音效開關">🔊</button>
+      <button class="icon-btn" id="btn-sound" aria-pressed="true" aria-label="音效開關" title="音效開關">
+        <svg class="ic ic-snd-on" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.2h3.6L12.4 5v14l-4.8-4.2H4Z"/><path d="M15.8 9.3a4.2 4.2 0 0 1 0 5.4"/><path d="M18.4 6.6a7.8 7.8 0 0 1 0 10.8"/></svg>
+        <svg class="ic ic-snd-off" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.2h3.6L12.4 5v14l-4.8-4.2H4Z"/><path d="M16.2 9.6l5 4.8M21.2 9.6l-5 4.8"/></svg>
+      </button>
+      <button class="icon-btn" id="btn-menu" aria-expanded="false" aria-controls="drawer" aria-label="更多功能" title="更多功能">
+        <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6.8h16M4 12h16M4 17.2h16"/></svg>
+      </button>
     </div>
   </header>
 
@@ -177,6 +182,44 @@
       <g id="layer-fx"></g>
       <g id="layer-vignette" pointer-events="none"></g>
     </svg>
+    <div class="pcard" id="card-black">
+      <svg class="pc-stone" viewBox="0 0 24 24" aria-hidden="true"><defs><radialGradient id="pcg-black" cx="50%" cy="50%" r="50%" fx="34%" fy="28%"><stop offset="0%" stop-color="#9c9ca8"/><stop offset="10%" stop-color="#585862"/><stop offset="45%" stop-color="#26262d"/><stop offset="91%" stop-color="#08080b"/><stop offset="100%" stop-color="#3a3a44"/></radialGradient></defs><circle cx="12" cy="12" r="10.4" fill="url(#pcg-black)"/></svg>
+      <span class="pc-txt"><span class="pc-name">黑方</span><span class="pc-caps"></span></span>
+    </div>
+    <div class="pcard" id="card-white">
+      <svg class="pc-stone" viewBox="0 0 24 24" aria-hidden="true"><defs><radialGradient id="pcg-white" cx="50%" cy="50%" r="50%" fx="34%" fy="28%"><stop offset="0%" stop-color="#ffffff"/><stop offset="28%" stop-color="#f7f5ef"/><stop offset="72%" stop-color="#dcd8cd"/><stop offset="93%" stop-color="#bab4a4"/><stop offset="100%" stop-color="#d9d4c7"/></radialGradient></defs><circle cx="12" cy="12" r="10.4" fill="url(#pcg-white)"/></svg>
+      <span class="pc-txt"><span class="pc-name">白方</span><span class="pc-caps"></span></span>
+    </div>
+    <div id="drawer-backdrop"></div>
+    <aside id="drawer" aria-hidden="true" aria-label="功能選單">
+      <div class="drawer-head">
+        <span class="drawer-title">功能選單</span>
+        <button class="icon-btn" id="btn-drawer-close" aria-label="關閉選單" title="關閉">
+          <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.4 6.4l11.2 11.2M17.6 6.4L6.4 17.6"/></svg>
+        </button>
+      </div>
+      <div class="drawer-body">
+        <div class="drawer-group">
+          <div class="drawer-label">對局工具</div>
+          <div class="drawer-items">
+            <button id="btn-coach">教練</button>
+            <button id="btn-heat" title="AI 思考熱力圖">熱力圖</button>
+            <button id="btn-fx" title="落子特效開關">特效</button>
+          </div>
+        </div>
+        <div class="drawer-group">
+          <div class="drawer-label">更多</div>
+          <div class="drawer-items">
+            <a class="btn-link" id="link-tutorial" href="tutorial.html">新手教學</a>
+            <button id="btn-lessons">教學</button>
+            <button id="btn-puzzles">謎題</button>
+            <button id="btn-openings">定式</button>
+            <button id="btn-online">連線</button>
+            <button id="btn-rank">排行榜</button>
+          </div>
+        </div>
+      </div>
+    </aside>
     <div id="score-bar">
       <span id="score-text"></span>
       <button class="primary" id="btn-score-done">確認結算</button>
