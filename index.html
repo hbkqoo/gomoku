@@ -20,9 +20,27 @@
 <meta name="twitter:title" content="3D 棋弈 — 五子棋 × 圍棋">
 <meta name="twitter:description" content="一站兩種棋：五子棋與圍棋（9／13／19 路）。電腦對手、教學、謎題、定式、線上對戰，免安裝、手機也能玩。">
 <meta name="twitter:image" content="https://hbkqoo.github.io/gomoku/og-image.png">
+<!-- 標題字型：Noto Serif TC -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@600;700&display=swap">
 <link rel="stylesheet" href="style.css?v=18">
 </head>
 <body>
+<div id="splash">
+  <div class="sp-mark">3D 棋弈</div>
+  <div class="sp-sub">五子棋 × 圍棋</div>
+  <div class="sp-stone" aria-hidden="true"></div>
+</div>
+<script>
+// 保底：不論初始化多慢（甚至 main.js 出錯），860ms 內一定讓載入畫面停止擋住畫面。
+setTimeout(function () {
+  var s = document.getElementById('splash');
+  if (!s || s.classList.contains('done')) return;
+  s.classList.add('done');
+  setTimeout(function () { s.remove(); }, 500);
+}, 860);
+</script>
 <div id="app">
   <header id="topbar">
     <h1 id="app-title">3D 五子棋</h1>
