@@ -324,8 +324,9 @@
     F = Math.min(W, H) * 0.78;
     CX = W / 2; CY = H * 0.5;
     svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
-    // 暗角是靜態的，只在尺寸改變時重畫一次
-    layers.vig.innerHTML = `<rect x="0" y="0" width="${W}" height="${H}" fill="url(#g-vignette)"/>`;
+    // 暗角是靜態的，只在尺寸改變時重畫一次。
+    // 防呆：快取裡的舊 index.html 配新 main.js 時沒有這個 layer，缺了就略過，不能讓整個 app 起不來（審查抓到）
+    if (layers.vig) layers.vig.innerHTML = `<rect x="0" y="0" width="${W}" height="${H}" fill="url(#g-vignette)"/>`;
     render();
   }
 
@@ -1369,6 +1370,8 @@
 
   function skySet(colors) {
     document.querySelectorAll('#g-sky stop').forEach((s, i) => s.setAttribute('stop-color', colors[i]));
+    // 地平線柔化帶用的是牆的底色，天亮時要一起變，否則柔化帶反而變成最硬的一條邊
+    document.querySelectorAll('#g-horizon stop').forEach((s) => s.setAttribute('stop-color', colors[2]));
   }
   function lerpColor(a, b, t) {
     const pa = [1, 3, 5].map((i) => parseInt(a.slice(i, i + 2), 16));
